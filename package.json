@@ -1,0 +1,21 @@
+{
+  "name": "modeldesk-ai",
+  "version": "1.0.0",
+  "description": "A starter SaaS for multi-model AI assistants with users, plans, admin, PayPal, plugins, and themes.",
+  "main": "server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check public/app.js"
+  },
+  "keywords": [
+    "openai",
+    "gemini",
+    "claude",
+    "assistant",
+    "saas"
+  ],
+  "license": "MIT"
+}

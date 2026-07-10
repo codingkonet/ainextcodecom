@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: modeldesk-ai
+    name: ainextcode
     runtime: node
     plan: free
     buildCommand: npm install
@@ -23,7 +23,11 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
       - key: PAYPAL_CLIENT_ID
         sync: false
       - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_RECEIVER_EMAIL
         sync: false

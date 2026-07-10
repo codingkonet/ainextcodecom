@@ -56,7 +56,8 @@ const seed = {
   themes: [
     { id: "sage", name: "Sage", active: true },
     { id: "midnight", name: "Midnight", active: true },
-    { id: "paper", name: "Paper", active: true }
+    { id: "paper", name: "Paper", active: true },
+    { id: "signal", name: "Signal", active: true }
   ]
 };
 
@@ -70,6 +71,10 @@ function db() {
   data.settings ||= { paypalEmail: paypal.receiverEmail };
   if (typeof data.settings.paypalEmail !== "string") data.settings.paypalEmail = paypal.receiverEmail;
   data.freeModels ||= seed.freeModels;
+  data.themes ||= seed.themes;
+  for (const theme of seed.themes) {
+    if (!data.themes.some(item => item.id === theme.id)) data.themes.push(theme);
+  }
   for (const plan of data.plans || []) {
     if (["free", "pro", "business"].includes(plan.id) && !plan.providerAccess.includes("openrouter")) plan.providerAccess.push("openrouter");
   }

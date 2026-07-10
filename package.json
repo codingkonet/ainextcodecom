@@ -1,7 +1,7 @@
 {
-  "name": "modeldesk-ai",
+  "name": "ainextcode",
   "version": "1.0.0",
-  "description": "A starter SaaS for multi-model AI assistants with users, plans, admin, PayPal, plugins, and themes.",
+  "description": "AInextcode SaaS starter for multi-model AI assistants with users, plans, admin, PayPal, plugins, themes, and free model presets.",
   "main": "server.js",
   "engines": {
     "node": ">=20"
@@ -10,12 +10,6 @@
     "start": "node server.js",
     "check": "node --check server.js && node --check public/app.js"
   },
-  "keywords": [
-    "openai",
-    "gemini",
-    "claude",
-    "assistant",
-    "saas"
-  ],
+  "keywords": ["openai", "gemini", "claude", "openrouter", "assistant", "saas"],
   "license": "MIT"
 }

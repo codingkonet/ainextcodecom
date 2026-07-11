@@ -1,15 +1,22 @@
 {
   "name": "ainextcode",
   "version": "1.0.0",
-  "description": "AInextcode SaaS starter for multi-model AI assistants with users, plans, admin, PayPal, plugins, themes, and free model presets.",
+  "description": "AInextcode free multi-model AI assistant with users, admin, plugins, themes, terminal clients, Android app, and free model presets.",
   "main": "server.js",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check public/app.js"
+    "terminal": "node terminal.js --server https://ainextcodecom.onrender.com",
+    "terminal:local": "node terminal.js --local",
+    "check": "node --check server.js && node --check public/app.js && node --check terminal.js"
   },
-  "keywords": ["openai", "gemini", "claude", "openrouter", "assistant", "saas"],
+  "keywords": [
+    "openai",
+    "assistant",
+    "chat"
+  ],
+  "author": "",
   "license": "MIT"
 }

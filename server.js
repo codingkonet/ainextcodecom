@@ -8,139 +8,1093 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const DB_FILE = path.join(DATA_DIR, "db.json");
 
-const defaults = {
-  openaiModel: process.env.OPENAI_MODEL || "gpt-5.1",
-  geminiModel: process.env.GEMINI_MODEL || "gemini-2.0-flash",
-  claudeModel: process.env.CLAUDE_MODEL || "claude-sonnet-4-5",
-  openrouterModel: process.env.OPENROUTER_MODEL || "deepseek/deepseek-r1-0528:free"
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.1";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-5";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
+const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
+const PAYPAL_RECEIVER_EMAIL = process.env.PAYPAL_RECEIVER_EMAIL || "";
+const PAYPAL_MODE = process.env.PAYPAL_MODE || "sandbox";
+const PAYPAL_BASE_URL = PAYPAL_MODE === "live"
+  ? "https://api-m.paypal.com"
+  : "https://api-m.sandbox.paypal.com";
+
+const BASE_INSTRUCTIONS = `You are an AI assistant powered by a multi-model platform. Your purpose is to provide clear, accurate, and practical help to users.
+
+Role:
+Act as a knowledgeable, friendly, and professional assistant.
+
+Core Behavior:
+- Understand the user's request before answering.
+- Ask clarifying questions when the request is unclear.
+- Provide step-by-step guidance when it is helpful.
+- Keep answers concise unless the user asks for more detail.
+- Do not invent facts. If you are unsure, say so clearly.
+- Adapt your tone, depth, and style to the user's needs.
+
+Output Style:
+- Use simple and direct language.
+- Organize answers with headings or bullet points when useful.
+- Include examples when they make the answer easier to understand.
+- End with practical next steps when appropriate.
+
+Goal:
+Help users solve problems, make better decisions, learn new things, and complete tasks efficiently.`;
+
+const mimeTypes = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml"
 };
 
-const serverKeys = {
-  openai: process.env.OPENAI_API_KEY,
-  gemini: process.env.GEMINI_API_KEY,
-  claude: process.env.ANTHROPIC_API_KEY,
-  openrouter: process.env.OPENROUTER_API_KEY
-};
+const defaultPlans = [
+  {
+    id: "free",
+    name: "Free Access",
+    price: 0,
+    currency: "USD",
+    interval: "month",
+    providerAccess: ["openai", "gemini", "claude", "openrouter"],
+    messageLimit: 1000000,
+    features: ["Free multi-model chat", "OpenRouter free model presets", "Plugins and themes"],
+    active: true
+  }
+];
 
-const paypal = {
-  mode: process.env.PAYPAL_MODE || "sandbox",
-  clientId: process.env.PAYPAL_CLIENT_ID,
-  secret: process.env.PAYPAL_CLIENT_SECRET,
-  receiverEmail: process.env.PAYPAL_RECEIVER_EMAIL || ""
-};
-paypal.baseUrl = paypal.mode === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
+const defaultFreeModels = [
+  {
+    id: "deepseek-r1-free",
+    name: "DeepSeek R1 Free",
+    provider: "openrouter",
+    model: "deepseek/deepseek-r1-0528:free",
+    active: true
+  },
+  {
+    id: "llama-3-3-free",
+    name: "Llama 3.3 Free",
+    provider: "openrouter",
+    model: "meta-llama/llama-3.3-70b-instruct:free",
+    active: true
+  },
+  {
+    id: "mistral-small-free",
+    name: "Mistral Small Free",
+    provider: "openrouter",
+    model: "mistralai/mistral-small-3.2-24b-instruct:free",
+    active: true
+  }
+];
 
-const systemPrompt = `You are AInextcode, a helpful AI assistant for a multi-model SaaS platform. Be clear, accurate, concise, practical, and honest about uncertainty.`;
-const providerIds = ["openai", "gemini", "claude", "openrouter"];
+const defaultPlugins = [
+  {
+    id: "writing",
+    name: "Writing Studio",
+    description: "Improves drafts, emails, summaries, and tone.",
+    prompt: "When the user asks for writing help, improve clarity, structure, tone, and usefulness.",
+    active: true
+  },
+  {
+    id: "coding",
+    name: "Code Helper",
+    description: "Adds practical coding, debugging, and architecture guidance.",
+    prompt: "When the user asks for technical help, provide careful, testable engineering guidance.",
+    active: true
+  },
+  {
+    id: "business",
+    name: "Business Coach",
+    description: "Supports plans, offers, operations, and customer communication.",
+    prompt: "When the user asks about business, focus on practical execution, positioning, and next steps.",
+    active: true
+  }
+];
 
-const seed = {
-  users: [],
-  sessions: [],
-  payments: [],
-  settings: { paypalEmail: paypal.receiverEmail },
-  freeModels: [
-    { id: "deepseek-r1-free", name: "DeepSeek R1 Free", provider: "openrouter", model: "deepseek/deepseek-r1-0528:free", active: true },
-    { id: "llama-33-free", name: "Llama 3.3 70B Free", provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free", active: true },
-    { id: "mistral-small-free", name: "Mistral Small Free", provider: "openrouter", model: "mistralai/mistral-small-3.2-24b-instruct:free", active: true }
-  ],
-  plans: [
-    { id: "free", name: "Free", price: 0, currency: "USD", interval: "month", messageLimit: 25, providerAccess: ["openai", "openrouter"], features: ["OpenAI chat", "Free model presets", "Basic themes", "Community plugins"], active: true },
-    { id: "pro", name: "Pro", price: 19, currency: "USD", interval: "month", messageLimit: 500, providerAccess: ["openai", "gemini", "claude", "openrouter"], features: ["All providers", "More messages", "Premium themes"], active: true },
-    { id: "business", name: "Business", price: 49, currency: "USD", interval: "month", messageLimit: 2500, providerAccess: ["openai", "gemini", "claude", "openrouter"], features: ["Team-ready limits", "Admin controls", "Priority setup"], active: true }
-  ],
-  plugins: [
-    { id: "writing", name: "Writing Studio", description: "Drafting and editing help.", prompt: "Improve clarity, structure, tone, and usefulness.", active: true },
-    { id: "coding", name: "Code Helper", description: "Coding and debugging help.", prompt: "Give careful, testable engineering guidance.", active: true },
-    { id: "business", name: "Business Coach", description: "Planning and marketing help.", prompt: "Focus on practical execution and next steps.", active: true }
-  ],
-  themes: [
-    { id: "sage", name: "Sage", active: true },
-    { id: "midnight", name: "Midnight", active: true },
-    { id: "paper", name: "Paper", active: true },
-    { id: "signal", name: "Signal", active: true }
-  ]
-};
+const defaultThemes = [
+  { id: "sage", name: "Sage", active: true },
+  { id: "midnight", name: "Midnight", active: true },
+  { id: "paper", name: "Paper", active: true },
+  { id: "signal", name: "Signal", active: true }
+];
 
 function ensureDb() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, `${JSON.stringify(seed, null, 2)}\n`);
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+
+  if (!fs.existsSync(DB_FILE)) {
+    writeDb({
+      users: [],
+      sessions: [],
+      plans: defaultPlans,
+      plugins: defaultPlugins,
+      themes: defaultThemes,
+      freeModels: defaultFreeModels,
+      settings: {
+        paypalEmail: PAYPAL_RECEIVER_EMAIL
+      },
+      payments: []
+    });
+  }
 }
-function db() {
+
+function readDb() {
   ensureDb();
   const data = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
-  data.settings ||= { paypalEmail: paypal.receiverEmail };
-  if (typeof data.settings.paypalEmail !== "string") data.settings.paypalEmail = paypal.receiverEmail;
-  data.freeModels ||= seed.freeModels;
-  data.themes ||= seed.themes;
-  for (const theme of seed.themes) {
-    if (!data.themes.some(item => item.id === theme.id)) data.themes.push(theme);
-  }
-  for (const plan of data.plans || []) {
-    if (["free", "pro", "business"].includes(plan.id) && !plan.providerAccess.includes("openrouter")) plan.providerAccess.push("openrouter");
+  data.freeModels ||= defaultFreeModels;
+  data.themes ||= defaultThemes;
+  data.settings ||= { paypalEmail: PAYPAL_RECEIVER_EMAIL };
+  data.settings.paypalEmail ||= PAYPAL_RECEIVER_EMAIL;
+  data.plans = [defaultPlans[0]];
+  for (const theme of defaultThemes) {
+    if (!data.themes.some(item => item.id === theme.id)) {
+      data.themes.push(theme);
+    }
   }
   return data;
 }
-function save(data) { fs.writeFileSync(DB_FILE, `${JSON.stringify(data, null, 2)}\n`); }
-function id(prefix) { return `${prefix}_${crypto.randomBytes(12).toString("hex")}`; }
-function slug(input) { return String(input || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
-function hash(password, salt = crypto.randomBytes(16).toString("hex")) { return `${salt}:${crypto.scryptSync(password, salt, 64).toString("hex")}`; }
-function verify(password, stored) { const [salt, digest] = String(stored || "").split(":"); if (!salt || !digest) return false; return crypto.timingSafeEqual(Buffer.from(digest, "hex"), crypto.scryptSync(password, salt, 64)); }
-function json(res, status, data, headers = {}) { const out = JSON.stringify(data); res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Content-Length": Buffer.byteLength(out), ...headers }); res.end(out); }
-function body(req) { return new Promise((resolve, reject) => { let raw = ""; req.on("data", c => { raw += c; if (raw.length > 1_000_000) req.destroy(); }); req.on("end", () => resolve(raw ? JSON.parse(raw) : {})); req.on("error", reject); }); }
-function cookies(req) { return Object.fromEntries(String(req.headers.cookie || "").split(";").map(x => x.trim()).filter(Boolean).map(x => { const i = x.indexOf("="); return [x.slice(0, i), decodeURIComponent(x.slice(i + 1))]; })); }
-function cookie(name, value, maxAge) { return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`; }
-function safeUser(user) { if (!user) return null; const { passwordHash, apiKeys, ...rest } = user; return { ...rest, modelPrefs: user.modelPrefs || {}, apiKeyStatus: { openai: !!apiKeys?.openai, gemini: !!apiKeys?.gemini, claude: !!apiKeys?.claude, openrouter: !!apiKeys?.openrouter } }; }
-function session(req, data = db()) { const token = cookies(req).session; const s = data.sessions.find(x => x.token === token && x.expiresAt > Date.now()); const user = s && data.users.find(x => x.id === s.userId && x.status !== "disabled"); return { data, user, session: s }; }
-function needUser(req, res) { const ctx = session(req); if (!ctx.user) { json(res, 401, { error: "Please log in first." }); return null; } return ctx; }
-function needAdmin(req, res) { const ctx = needUser(req, res); if (!ctx) return null; if (ctx.user.role !== "admin") { json(res, 403, { error: "Admin access required." }); return null; } return ctx; }
-function planOf(data, user) { return data.plans.find(x => x.id === user.planId) || data.plans[0]; }
-function providerList(user) { const keys = user?.apiKeys || {}; const prefs = user?.modelPrefs || {}; return [
-  { id: "openai", name: "OpenAI", defaultModel: prefs.openai || defaults.openaiModel, configured: !!(keys.openai || serverKeys.openai), source: keys.openai ? "user" : serverKeys.openai ? "server" : "missing" },
-  { id: "gemini", name: "Gemini", defaultModel: prefs.gemini || defaults.geminiModel, configured: !!(keys.gemini || serverKeys.gemini), source: keys.gemini ? "user" : serverKeys.gemini ? "server" : "missing" },
-  { id: "claude", name: "Claude", defaultModel: prefs.claude || defaults.claudeModel, configured: !!(keys.claude || serverKeys.claude), source: keys.claude ? "user" : serverKeys.claude ? "server" : "missing" },
-  { id: "openrouter", name: "OpenRouter Free", defaultModel: prefs.openrouter || defaults.openrouterModel, configured: !!(keys.openrouter || serverKeys.openrouter), source: keys.openrouter ? "user" : serverKeys.openrouter ? "server" : "missing" }
-]; }
-function config(data = db(), user = null) { return { providers: providerList(user), plans: data.plans.filter(x => x.active), plugins: data.plugins.filter(x => x.active), themes: data.themes.filter(x => x.active), freeModels: (data.freeModels || []).filter(x => x.active), paypal: { configured: !!(paypal.clientId && paypal.secret), clientId: paypal.clientId || null, mode: paypal.mode, email: data.settings?.paypalEmail || paypal.receiverEmail || "" } }; }
-function instructions(data, specialization, pluginIds = []) { const plugs = data.plugins.filter(p => p.active && pluginIds.includes(p.id)).map(p => `${p.name}: ${p.prompt || p.description}`).join("\n"); return `${systemPrompt}\nSpecialization: ${specialization || "general help"}\n${plugs}`; }
-function cleanMessages(messages) { return Array.isArray(messages) ? messages.filter(m => m && ["user", "assistant"].includes(m.role)).map(m => ({ role: m.role, content: String(m.content || "").slice(0, 8000) })).filter(m => m.content).slice(-20) : []; }
 
-async function callOpenAI(key, model, prompt, messages) {
-  if (!key) throw new Error("OpenAI is not configured. Add a key in API Settings.");
-  const r = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model, messages: [{ role: "system", content: prompt }, ...messages] }) });
-  const data = await r.json(); if (!r.ok) throw new Error(data.error?.message || "OpenAI request failed."); return data.choices?.[0]?.message?.content || "";
-}
-async function callOpenRouter(key, model, prompt, messages) {
-  if (!key) throw new Error("OpenRouter is not configured. Add a key in API Settings.");
-  const r = await fetch("https://openrouter.ai/api/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "AInextcode" }, body: JSON.stringify({ model, messages: [{ role: "system", content: prompt }, ...messages] }) });
-  const data = await r.json(); if (!r.ok) throw new Error(data.error?.message || "OpenRouter request failed."); return data.choices?.[0]?.message?.content || "";
-}
-async function callGemini(key, model, prompt, messages) {
-  if (!key) throw new Error("Gemini is not configured. Add a key in API Settings.");
-  const contents = messages.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemInstruction: { parts: [{ text: prompt }] }, contents }) });
-  const data = await r.json(); if (!r.ok) throw new Error(data.error?.message || "Gemini request failed."); return (data.candidates || []).flatMap(c => c.content?.parts || []).map(p => p.text || "").join("");
-}
-async function callClaude(key, model, prompt, messages) {
-  if (!key) throw new Error("Claude is not configured. Add a key in API Settings.");
-  const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, body: JSON.stringify({ model, max_tokens: 1200, system: prompt, messages }) });
-  const data = await r.json(); if (!r.ok) throw new Error(data.error?.message || "Claude request failed."); return (data.content || []).map(p => p.text || "").join("");
+function writeDb(db) {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  fs.writeFileSync(DB_FILE, `${JSON.stringify(db, null, 2)}\n`);
 }
 
-async function signup(req, res) { const input = await body(req); const data = db(); const email = String(input.email || "").trim().toLowerCase(); if (!input.name || !email || String(input.password || "").length < 8) return json(res, 400, { error: "Name, email, and 8 character password required." }); if (data.users.some(u => u.email === email)) return json(res, 409, { error: "Email already exists." }); const user = { id: id("usr"), name: String(input.name).slice(0, 80), email, passwordHash: hash(input.password), role: data.users.length ? "user" : "admin", planId: "free", status: "active", themeId: "sage", apiKeys: {}, modelPrefs: {}, usage: {}, createdAt: new Date().toISOString() }; const token = id("sess"); data.users.push(user); data.sessions.push({ token, userId: user.id, createdAt: Date.now(), expiresAt: Date.now() + 12096e5 }); save(data); json(res, 201, { user: safeUser(user) }, { "Set-Cookie": cookie("session", token, 60 * 60 * 24 * 14) }); }
-async function login(req, res) { const input = await body(req); const data = db(); const user = data.users.find(u => u.email === String(input.email || "").trim().toLowerCase()); if (!user || !verify(input.password, user.passwordHash)) return json(res, 401, { error: "Invalid email or password." }); const token = id("sess"); data.sessions.push({ token, userId: user.id, createdAt: Date.now(), expiresAt: Date.now() + 12096e5 }); save(data); json(res, 200, { user: safeUser(user) }, { "Set-Cookie": cookie("session", token, 60 * 60 * 24 * 14) }); }
-function logout(req, res) { const data = db(); const token = cookies(req).session; data.sessions = data.sessions.filter(s => s.token !== token); save(data); json(res, 200, { ok: true }, { "Set-Cookie": cookie("session", "", 0) }); }
-async function apiSettings(req, res) { const ctx = needUser(req, res); if (!ctx) return; const input = await body(req); ctx.user.apiKeys ||= {}; ctx.user.modelPrefs ||= {}; for (const p of providerIds) { if (input.clear?.[p]) delete ctx.user.apiKeys[p]; const key = String(input[`${p}Key`] || "").trim(); if (key) ctx.user.apiKeys[p] = key; const model = String(input.models?.[p] || "").trim(); if (model) ctx.user.modelPrefs[p] = model; } save(ctx.data); json(res, 200, { user: safeUser(ctx.user), config: config(ctx.data, ctx.user) }); }
-async function chat(req, res) { const ctx = needUser(req, res); if (!ctx) return; const input = await body(req); const data = ctx.data; const user = ctx.user; const plan = planOf(data, user); const provider = providerIds.includes(input.provider) ? input.provider : "openai"; if (!plan.providerAccess.includes(provider)) return json(res, 403, { error: `${plan.name} does not include ${provider}.` }); const month = new Date().toISOString().slice(0, 7); user.usage ||= {}; user.usage[month] ||= 0; if (user.usage[month] >= plan.messageLimit) return json(res, 402, { error: "Monthly message limit reached." }); const messages = cleanMessages(input.messages); const found = providerList(user).find(p => p.id === provider); const model = input.model || user.modelPrefs?.[provider] || found.defaultModel; const key = user.apiKeys?.[provider] || serverKeys[provider]; const prompt = instructions(data, input.specialization, input.plugins || []); const answer = provider === "gemini" ? await callGemini(key, model, prompt, messages) : provider === "claude" ? await callClaude(key, model, prompt, messages) : provider === "openrouter" ? await callOpenRouter(key, model, prompt, messages) : await callOpenAI(key, model, prompt, messages); user.usage[month] += 1; save(data); json(res, 200, { message: answer, provider, model, usage: user.usage[month], limit: plan.messageLimit }); }
-async function paypalOrder(req, res) { const ctx = needUser(req, res); if (!ctx) return; const input = await body(req); const plan = ctx.data.plans.find(p => p.id === input.planId); if (!plan) return json(res, 404, { error: "Plan not found." }); if (plan.price <= 0) { ctx.user.planId = plan.id; save(ctx.data); return json(res, 200, { free: true, planId: plan.id }); } if (!paypal.clientId || !paypal.secret) return json(res, 500, { error: "PayPal is not configured." }); json(res, 501, { error: "PayPal Orders are wired, but production checkout still needs approval return pages and webhooks." }); }
-async function adminOverview(req, res) { const ctx = needAdmin(req, res); if (!ctx) return; json(res, 200, { users: ctx.data.users.map(safeUser), plans: ctx.data.plans, plugins: ctx.data.plugins, themes: ctx.data.themes, payments: ctx.data.payments, freeModels: ctx.data.freeModels || [], settings: ctx.data.settings || {}, providers: providerList(), paypalConfigured: !!(paypal.clientId && paypal.secret) }); }
-async function adminUser(req, res, userId) { const ctx = needAdmin(req, res); if (!ctx) return; const input = await body(req); const user = ctx.data.users.find(u => u.id === userId); if (!user) return json(res, 404, { error: "User not found." }); if (["admin", "user"].includes(input.role)) user.role = input.role; if (["active", "disabled"].includes(input.status)) user.status = input.status; if (ctx.data.plans.some(p => p.id === input.planId)) user.planId = input.planId; save(ctx.data); json(res, 200, { user: safeUser(user) }); }
-async function adminSettings(req, res) { const ctx = needAdmin(req, res); if (!ctx) return; const input = await body(req); ctx.data.settings ||= {}; ctx.data.settings.paypalEmail = String(input.paypalEmail || "").trim(); save(ctx.data); json(res, 200, { settings: ctx.data.settings }); }
-async function adminFreeModel(req, res) { const ctx = needAdmin(req, res); if (!ctx) return; const input = await body(req); const name = String(input.name || "").trim(); const model = String(input.model || "").trim(); if (!name || !model) return json(res, 400, { error: "Name and model are required." }); const item = { id: slug(input.id || name), name, provider: "openrouter", model, active: input.active !== false }; ctx.data.freeModels ||= []; const i = ctx.data.freeModels.findIndex(x => x.id === item.id); if (i >= 0) ctx.data.freeModels[i] = item; else ctx.data.freeModels.push(item); save(ctx.data); json(res, 200, { item }); }
-async function adminAdd(req, res, type) { const ctx = needAdmin(req, res); if (!ctx) return; const input = await body(req); const collection = ctx.data[type]; const idValue = slug(input.id || input.name); if (!idValue || !input.name) return json(res, 400, { error: "Id and name required." }); const access = Array.isArray(input.providerAccess) ? input.providerAccess.filter(p => providerIds.includes(p)) : ["openai", "openrouter"]; const item = type === "plans" ? { id: idValue, name: input.name, price: Number(input.price || 0), currency: "USD", interval: "month", messageLimit: Number(input.messageLimit || 100), providerAccess: access.length ? access : ["openai"], features: String(input.features || "").split("\n").filter(Boolean), active: true } : type === "themes" ? { id: idValue, name: input.name, active: true } : { id: idValue, name: input.name, description: input.description || "", prompt: input.prompt || "", active: true }; const i = collection.findIndex(x => x.id === idValue); if (i >= 0) collection[i] = item; else collection.push(item); save(ctx.data); json(res, 200, { item }); }
+function sendJson(res, status, payload, extraHeaders = {}) {
+  const body = JSON.stringify(payload);
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Length": Buffer.byteLength(body),
+    ...extraHeaders
+  });
+  res.end(body);
+}
 
-function staticFile(req, res) { const url = new URL(req.url, `http://localhost:${PORT}`); const p = url.pathname === "/" ? "/index.html" : url.pathname; const file = path.resolve(PUBLIC_DIR, `.${p}`); if (!file.startsWith(PUBLIC_DIR)) return res.writeHead(403).end("Forbidden"); fs.readFile(file, (err, content) => { if (err) return fs.readFile(path.join(PUBLIC_DIR, "index.html"), (e, html) => { if (e) return res.writeHead(404).end("Not found"); res.writeHead(200, { "Content-Type": "text/html" }); res.end(html); }); const ext = path.extname(file); res.writeHead(200, { "Content-Type": ext === ".css" ? "text/css" : ext === ".js" ? "text/javascript" : "text/html" }); res.end(content); }); }
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.on("data", chunk => {
+      body += chunk;
+      if (body.length > 1_000_000) {
+        req.destroy();
+        reject(new Error("Request body is too large."));
+      }
+    });
+    req.on("end", () => resolve(body));
+    req.on("error", reject);
+  });
+}
 
-async function route(req, res) { const url = new URL(req.url, `http://localhost:${PORT}`); const p = url.pathname; if (req.method === "GET" && p === "/healthz") return json(res, 200, { ok: true, providers: providerList(), paypalConfigured: !!(paypal.clientId && paypal.secret) }); if (req.method === "GET" && p === "/api/config") return json(res, 200, config()); if (req.method === "GET" && p === "/api/me") { const ctx = session(req); return json(res, 200, { user: safeUser(ctx.user), plan: ctx.user ? planOf(ctx.data, ctx.user) : null, config: config(ctx.data, ctx.user) }); } if (req.method === "POST" && p === "/api/auth/signup") return signup(req, res); if (req.method === "POST" && p === "/api/auth/login") return login(req, res); if (req.method === "POST" && p === "/api/auth/logout") return logout(req, res); if (req.method === "POST" && p === "/api/settings/api") return apiSettings(req, res); if (req.method === "POST" && p === "/api/chat") return chat(req, res); if (req.method === "POST" && p === "/api/paypal/create-order") return paypalOrder(req, res); if (req.method === "GET" && p === "/api/admin/overview") return adminOverview(req, res); const userMatch = p.match(/^\/api\/admin\/users\/([^/]+)$/); if (req.method === "PUT" && userMatch) return adminUser(req, res, userMatch[1]); if (req.method === "POST" && p === "/api/admin/settings") return adminSettings(req, res); if (req.method === "POST" && p === "/api/admin/free-models") return adminFreeModel(req, res); if (req.method === "POST" && p === "/api/admin/plans") return adminAdd(req, res, "plans"); if (req.method === "POST" && p === "/api/admin/plugins") return adminAdd(req, res, "plugins"); if (req.method === "POST" && p === "/api/admin/themes") return adminAdd(req, res, "themes"); if (req.method === "GET") return staticFile(req, res); res.writeHead(405).end("Method not allowed"); }
+async function jsonBody(req) {
+  const raw = await readBody(req);
+  if (!raw.trim()) return {};
+  return JSON.parse(raw);
+}
+
+function publicUser(user) {
+  if (!user) return null;
+  const { passwordHash, apiKeys, ...safeUser } = user;
+  safeUser.apiKeyStatus = {
+    openai: Boolean(apiKeys?.openai),
+    gemini: Boolean(apiKeys?.gemini),
+    claude: Boolean(apiKeys?.claude),
+    openrouter: Boolean(apiKeys?.openrouter)
+  };
+  safeUser.modelPrefs ||= {};
+  return safeUser;
+}
+
+function cookieHeader(name, value, options = {}) {
+  const parts = [`${name}=${value}`, "Path=/", "HttpOnly", "SameSite=Lax"];
+  if (options.maxAge !== undefined) parts.push(`Max-Age=${options.maxAge}`);
+  return parts.join("; ");
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie || "";
+  return Object.fromEntries(
+    header
+      .split(";")
+      .map(part => part.trim())
+      .filter(Boolean)
+      .map(part => {
+        const index = part.indexOf("=");
+        return [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
+      })
+  );
+}
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
+  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  const [salt, hash] = String(stored || "").split(":");
+  if (!salt || !hash) return false;
+  const candidate = crypto.scryptSync(password, salt, 64);
+  return crypto.timingSafeEqual(Buffer.from(hash, "hex"), candidate);
+}
+
+function cleanEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+function newId(prefix) {
+  return `${prefix}_${crypto.randomBytes(12).toString("hex")}`;
+}
+
+function getSession(req, db = readDb()) {
+  const token = parseCookies(req).session;
+  if (!token) return { db, user: null, session: null };
+
+  const now = Date.now();
+  const session = db.sessions.find(item => item.token === token && item.expiresAt > now);
+  if (!session) return { db, user: null, session: null };
+
+  const user = db.users.find(item => item.id === session.userId && item.status !== "disabled");
+  return { db, user, session };
+}
+
+function requireUser(req, res) {
+  const context = getSession(req);
+  if (!context.user) {
+    sendJson(res, 401, { error: "Please log in first." });
+    return null;
+  }
+  return context;
+}
+
+function requireAdmin(req, res) {
+  const context = requireUser(req, res);
+  if (!context) return null;
+  if (context.user.role !== "admin") {
+    sendJson(res, 403, { error: "Admin access required." });
+    return null;
+  }
+  return context;
+}
+
+function currentUsageMonth() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+function safeMessages(messages) {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .filter(message => message && ["user", "assistant"].includes(message.role))
+    .map(message => ({
+      role: message.role,
+      content: String(message.content || "").slice(0, 8000)
+    }))
+    .filter(message => message.content.trim().length > 0)
+    .slice(-20);
+}
+
+function buildInstructions({ specialization, plugins, enabledPluginIds }) {
+  const cleanSpecialization = String(specialization || "general help").slice(0, 300);
+  const selectedPlugins = plugins
+    .filter(plugin => plugin.active && enabledPluginIds.includes(plugin.id))
+    .map(plugin => `Plugin: ${plugin.name}\n${plugin.prompt || plugin.description}`)
+    .join("\n\n");
+
+  return `${BASE_INSTRUCTIONS}
+
+Specialization:
+You specialize in ${cleanSpecialization}.
+
+Enabled capabilities:
+${selectedPlugins || "No extra plugins are enabled for this conversation."}`;
+}
+
+function providersStatus(user = null) {
+  const apiKeys = user?.apiKeys || {};
+  const modelPrefs = user?.modelPrefs || {};
+  return [
+    {
+      id: "openai",
+      name: "OpenAI",
+      defaultModel: modelPrefs.openai || OPENAI_MODEL,
+      configured: Boolean(apiKeys.openai || OPENAI_API_KEY),
+      source: apiKeys.openai ? "user" : OPENAI_API_KEY ? "server" : "missing"
+    },
+    {
+      id: "gemini",
+      name: "Gemini",
+      defaultModel: modelPrefs.gemini || GEMINI_MODEL,
+      configured: Boolean(apiKeys.gemini || GEMINI_API_KEY),
+      source: apiKeys.gemini ? "user" : GEMINI_API_KEY ? "server" : "missing"
+    },
+    {
+      id: "claude",
+      name: "Claude",
+      defaultModel: modelPrefs.claude || CLAUDE_MODEL,
+      configured: Boolean(apiKeys.claude || ANTHROPIC_API_KEY),
+      source: apiKeys.claude ? "user" : ANTHROPIC_API_KEY ? "server" : "missing"
+    },
+    {
+      id: "openrouter",
+      name: "OpenRouter Free",
+      defaultModel: modelPrefs.openrouter || "deepseek/deepseek-r1-0528:free",
+      configured: Boolean(apiKeys.openrouter || OPENROUTER_API_KEY),
+      source: apiKeys.openrouter ? "user" : OPENROUTER_API_KEY ? "server" : "missing"
+    }
+  ];
+}
+
+function planForUser(db, user) {
+  return db.plans.find(plan => plan.id === user.planId) || db.plans.find(plan => plan.id === "free") || db.plans[0];
+}
+
+function providerModel(provider, model, user = null) {
+  if (model) return String(model).trim();
+  const modelPrefs = user?.modelPrefs || {};
+  if (modelPrefs[provider]) return modelPrefs[provider];
+  if (provider === "openrouter") return "deepseek/deepseek-r1-0528:free";
+  if (provider === "gemini") return GEMINI_MODEL;
+  if (provider === "claude") return CLAUDE_MODEL;
+  return OPENAI_MODEL;
+}
+
+function chatCompletionText(data) {
+  const content = data.choices?.[0]?.message?.content;
+  if (Array.isArray(content)) {
+    return content.map(part => part.text || "").join("").trim();
+  }
+  return String(content || "").trim();
+}
+
+function geminiText(data) {
+  return (data.candidates || [])
+    .flatMap(candidate => candidate.content?.parts || [])
+    .map(part => part.text || "")
+    .join("")
+    .trim();
+}
+
+function claudeText(data) {
+  return (data.content || [])
+    .map(part => part.text || "")
+    .join("")
+    .trim();
+}
+
+async function callOpenAI({ apiKey, model, instructions, messages }) {
+  if (!apiKey) throw new Error("OpenAI is not configured. Add an OpenAI API key in API Settings.");
+
+  const apiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: instructions },
+        ...messages.map(message => ({ role: message.role, content: message.content }))
+      ]
+    })
+  });
+
+  const data = await apiResponse.json();
+  if (!apiResponse.ok) throw new Error(data.error?.message || "OpenAI request failed.");
+  return chatCompletionText(data);
+}
+
+async function callGemini({ apiKey, model, instructions, messages }) {
+  if (!apiKey) throw new Error("Gemini is not configured. Add a Gemini API key in API Settings.");
+
+  const contents = messages.map(message => ({
+    role: message.role === "assistant" ? "model" : "user",
+    parts: [{ text: message.content }]
+  }));
+
+  const apiResponse = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: instructions }] },
+        contents
+      })
+    }
+  );
+
+  const data = await apiResponse.json();
+  if (!apiResponse.ok) throw new Error(data.error?.message || "Gemini request failed.");
+  return geminiText(data);
+}
+
+async function callClaude({ apiKey, model, instructions, messages }) {
+  if (!apiKey) throw new Error("Claude is not configured. Add a Claude API key in API Settings.");
+
+  const apiResponse = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1200,
+      system: instructions,
+      messages: messages.map(message => ({
+        role: message.role === "assistant" ? "assistant" : "user",
+        content: message.content
+      }))
+    })
+  });
+
+  const data = await apiResponse.json();
+  if (!apiResponse.ok) throw new Error(data.error?.message || "Claude request failed.");
+  return claudeText(data);
+}
+
+async function callOpenRouter({ apiKey, model, instructions, messages }) {
+  if (!apiKey) throw new Error("OpenRouter is not configured. Add an OpenRouter API key in API Settings.");
+
+  const apiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "X-Title": "AInextcode"
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: instructions },
+        ...messages.map(message => ({
+          role: message.role,
+          content: message.content
+        }))
+      ]
+    })
+  });
+
+  const data = await apiResponse.json();
+  if (!apiResponse.ok) throw new Error(data.error?.message || "OpenRouter request failed.");
+  return chatCompletionText(data);
+}
+
+async function handleChat(req, res) {
+  const context = requireUser(req, res);
+  if (!context) return;
+
+  try {
+    const body = await jsonBody(req);
+    const db = context.db;
+    const user = context.user;
+    const plan = planForUser(db, user);
+    const messages = safeMessages(body.messages);
+    const lastUserMessage = [...messages].reverse().find(message => message.role === "user");
+
+    if (!lastUserMessage) {
+      sendJson(res, 400, { error: "Send a user message first." });
+      return;
+    }
+
+    const provider = ["openai", "gemini", "claude", "openrouter"].includes(body.provider) ? body.provider : "openai";
+    if (!plan.providerAccess.includes(provider)) {
+      sendJson(res, 403, { error: `${plan.name} does not include ${provider}. Upgrade your plan to use it.` });
+      return;
+    }
+
+    const month = currentUsageMonth();
+    user.usage ||= {};
+    user.usage[month] ||= 0;
+
+    if (plan.messageLimit > 0 && user.usage[month] >= plan.messageLimit) {
+      sendJson(res, 402, { error: "This plan has reached its monthly message limit." });
+      return;
+    }
+
+    const enabledPluginIds = Array.isArray(body.plugins) ? body.plugins.map(String) : [];
+    const instructions = buildInstructions({
+      specialization: body.specialization,
+      plugins: db.plugins,
+      enabledPluginIds
+    });
+    const model = providerModel(provider, body.model, user);
+    const userApiKeys = user.apiKeys || {};
+    const apiKey = provider === "gemini"
+      ? userApiKeys.gemini || GEMINI_API_KEY
+      : provider === "claude"
+        ? userApiKeys.claude || ANTHROPIC_API_KEY
+        : provider === "openrouter"
+          ? userApiKeys.openrouter || OPENROUTER_API_KEY
+          : userApiKeys.openai || OPENAI_API_KEY;
+    const payload = { apiKey, model, instructions, messages };
+
+    let message;
+    if (provider === "gemini") {
+      message = await callGemini(payload);
+    } else if (provider === "claude") {
+      message = await callClaude(payload);
+    } else if (provider === "openrouter") {
+      message = await callOpenRouter(payload);
+    } else {
+      message = await callOpenAI(payload);
+    }
+
+    user.usage[month] += 1;
+    writeDb(db);
+
+    sendJson(res, 200, {
+      message: message || "I received the request, but no text response was returned.",
+      provider,
+      model,
+      usage: user.usage[month],
+      limit: plan.messageLimit
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Something went wrong." });
+  }
+}
+
+async function handleSignup(req, res) {
+  try {
+    const body = await jsonBody(req);
+    const name = String(body.name || "").trim().slice(0, 80);
+    const email = cleanEmail(body.email);
+    const password = String(body.password || "");
+
+    if (!name || !email || password.length < 8) {
+      sendJson(res, 400, { error: "Enter a name, valid email, and password with at least 8 characters." });
+      return;
+    }
+
+    const db = readDb();
+    if (db.users.some(user => user.email === email)) {
+      sendJson(res, 409, { error: "An account with this email already exists." });
+      return;
+    }
+
+    const isFirstUser = db.users.length === 0;
+    const user = {
+      id: newId("usr"),
+      name,
+      email,
+      passwordHash: hashPassword(password),
+      role: isFirstUser ? "admin" : "user",
+      planId: "free",
+      status: "active",
+      themeId: "sage",
+      apiKeys: {},
+      modelPrefs: {},
+      usage: {},
+      createdAt: new Date().toISOString()
+    };
+
+    const token = newId("sess");
+    db.users.push(user);
+    db.sessions.push({
+      token,
+      userId: user.id,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 14
+    });
+    writeDb(db);
+
+    sendJson(res, 201, { user: publicUser(user) }, {
+      "Set-Cookie": cookieHeader("session", token, { maxAge: 60 * 60 * 24 * 14 })
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Signup failed." });
+  }
+}
+
+async function handleLogin(req, res) {
+  try {
+    const body = await jsonBody(req);
+    const email = cleanEmail(body.email);
+    const password = String(body.password || "");
+    const db = readDb();
+    const user = db.users.find(item => item.email === email);
+
+    if (!user || !verifyPassword(password, user.passwordHash) || user.status === "disabled") {
+      sendJson(res, 401, { error: "Invalid email or password." });
+      return;
+    }
+
+    const token = newId("sess");
+    db.sessions.push({
+      token,
+      userId: user.id,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 14
+    });
+    writeDb(db);
+
+    sendJson(res, 200, { user: publicUser(user) }, {
+      "Set-Cookie": cookieHeader("session", token, { maxAge: 60 * 60 * 24 * 14 })
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Login failed." });
+  }
+}
+
+function handleLogout(req, res) {
+  const db = readDb();
+  const token = parseCookies(req).session;
+  db.sessions = db.sessions.filter(session => session.token !== token);
+  writeDb(db);
+  sendJson(res, 200, { ok: true }, {
+    "Set-Cookie": cookieHeader("session", "", { maxAge: 0 })
+  });
+}
+
+function publicConfig(db = readDb(), user = null) {
+  return {
+    providers: providersStatus(user),
+    plans: db.plans.filter(plan => plan.active),
+    plugins: db.plugins.filter(plugin => plugin.active),
+    themes: db.themes.filter(theme => theme.active),
+    freeModels: db.freeModels.filter(model => model.active),
+    paypal: {
+      configured: Boolean(PAYPAL_CLIENT_ID && PAYPAL_CLIENT_SECRET),
+      clientId: PAYPAL_CLIENT_ID || null,
+      email: db.settings?.paypalEmail || PAYPAL_RECEIVER_EMAIL || null,
+      mode: PAYPAL_MODE
+    }
+  };
+}
+
+async function handleApiSettings(req, res) {
+  const context = requireUser(req, res);
+  if (!context) return;
+
+  try {
+    const body = await jsonBody(req);
+    const user = context.user;
+    user.apiKeys ||= {};
+    user.modelPrefs ||= {};
+
+    const keyFields = {
+      openai: "openaiKey",
+      gemini: "geminiKey",
+      claude: "claudeKey",
+      openrouter: "openrouterKey"
+    };
+
+    for (const [provider, field] of Object.entries(keyFields)) {
+      if (body.clear?.[provider]) {
+        delete user.apiKeys[provider];
+      }
+
+      const value = String(body[field] || "").trim();
+      if (value) {
+        user.apiKeys[provider] = value;
+      }
+    }
+
+    for (const provider of ["openai", "gemini", "claude", "openrouter"]) {
+      const model = String(body.models?.[provider] || "").trim();
+      if (model) user.modelPrefs[provider] = model.slice(0, 120);
+    }
+
+    writeDb(context.db);
+    sendJson(res, 200, {
+      user: publicUser(user),
+      config: publicConfig(context.db, user)
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not save API settings." });
+  }
+}
+
+async function handleAdminSettings(req, res) {
+  const context = requireAdmin(req, res);
+  if (!context) return;
+
+  const body = await jsonBody(req);
+  context.db.settings ||= {};
+  context.db.settings.paypalEmail = String(body.paypalEmail || "").trim().slice(0, 160);
+  writeDb(context.db);
+
+  sendJson(res, 200, {
+    settings: context.db.settings,
+    config: publicConfig(context.db, context.user)
+  });
+}
+
+async function handleAdminFreeModel(req, res) {
+  const context = requireAdmin(req, res);
+  if (!context) return;
+
+  const body = await jsonBody(req);
+  const id = String(body.id || body.name || body.model || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  if (!id || !body.name || !body.model) {
+    sendJson(res, 400, { error: "Free model name and model slug are required." });
+    return;
+  }
+
+  const item = {
+    id,
+    name: String(body.name).trim().slice(0, 80),
+    provider: "openrouter",
+    model: String(body.model).trim().slice(0, 160),
+    active: body.active !== false
+  };
+
+  context.db.freeModels ||= [];
+  const index = context.db.freeModels.findIndex(model => model.id === id);
+  if (index >= 0) context.db.freeModels[index] = item;
+  else context.db.freeModels.push(item);
+
+  writeDb(context.db);
+  sendJson(res, 200, { item });
+}
+
+async function paypalAccessToken() {
+  if (!PAYPAL_CLIENT_ID || !PAYPAL_CLIENT_SECRET) {
+    throw new Error("PayPal is not configured. Add PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.");
+  }
+
+  const credentials = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString("base64");
+  const apiResponse = await fetch(`${PAYPAL_BASE_URL}/v1/oauth2/token`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Basic ${credentials}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: "grant_type=client_credentials"
+  });
+
+  const data = await apiResponse.json();
+  if (!apiResponse.ok) throw new Error(data.error_description || "PayPal authentication failed.");
+  return data.access_token;
+}
+
+async function handleCreatePayPalOrder(req, res) {
+  const context = requireUser(req, res);
+  if (!context) return;
+
+  try {
+    const body = await jsonBody(req);
+    const db = context.db;
+    const plan = db.plans.find(item => item.id === body.planId && item.active);
+
+    if (!plan) {
+      sendJson(res, 404, { error: "Plan not found." });
+      return;
+    }
+
+    if (plan.price <= 0) {
+      context.user.planId = plan.id;
+      writeDb(db);
+      sendJson(res, 200, { free: true, planId: plan.id });
+      return;
+    }
+
+    const accessToken = await paypalAccessToken();
+    const origin = req.headers.origin || `http://localhost:${PORT}`;
+    const apiResponse = await fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        intent: "CAPTURE",
+        purchase_units: [{
+          reference_id: plan.id,
+          description: `${plan.name} plan`,
+          amount: {
+            currency_code: plan.currency,
+            value: Number(plan.price).toFixed(2)
+          }
+        }],
+        application_context: {
+          brand_name: "AInextcode",
+          landing_page: "LOGIN",
+          user_action: "PAY_NOW",
+          return_url: `${origin}/#billing-success`,
+          cancel_url: `${origin}/#billing-cancelled`
+        }
+      })
+    });
+
+    const data = await apiResponse.json();
+    if (!apiResponse.ok) throw new Error(data.message || "PayPal order creation failed.");
+
+    db.payments.push({
+      id: newId("pay"),
+      userId: context.user.id,
+      planId: plan.id,
+      provider: "paypal",
+      orderId: data.id,
+      status: "created",
+      amount: plan.price,
+      currency: plan.currency,
+      createdAt: new Date().toISOString()
+    });
+    writeDb(db);
+
+    sendJson(res, 200, {
+      orderId: data.id,
+      approveUrl: data.links?.find(link => link.rel === "approve")?.href || null
+    });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "PayPal order failed." });
+  }
+}
+
+async function handleCapturePayPalOrder(req, res) {
+  const context = requireUser(req, res);
+  if (!context) return;
+
+  try {
+    const body = await jsonBody(req);
+    const orderId = String(body.orderId || body.token || "");
+    const planId = String(body.planId || "");
+
+    if (!orderId) {
+      sendJson(res, 400, { error: "Missing PayPal order id." });
+      return;
+    }
+
+    const db = context.db;
+    const payment = db.payments.find(item => item.orderId === orderId && item.userId === context.user.id);
+    const plan = db.plans.find(item => item.id === (planId || payment?.planId));
+
+    if (!payment || !plan) {
+      sendJson(res, 404, { error: "Payment record not found." });
+      return;
+    }
+
+    const accessToken = await paypalAccessToken();
+    const apiResponse = await fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      }
+    });
+
+    const data = await apiResponse.json();
+    if (!apiResponse.ok) throw new Error(data.message || "PayPal capture failed.");
+
+    payment.status = data.status || "COMPLETED";
+    payment.capturedAt = new Date().toISOString();
+    context.user.planId = plan.id;
+    writeDb(db);
+
+    sendJson(res, 200, { ok: true, status: payment.status, planId: plan.id });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "PayPal capture failed." });
+  }
+}
+
+async function handleAdminUpdateUser(req, res, userId) {
+  const context = requireAdmin(req, res);
+  if (!context) return;
+
+  const body = await jsonBody(req);
+  const target = context.db.users.find(user => user.id === userId);
+  if (!target) {
+    sendJson(res, 404, { error: "User not found." });
+    return;
+  }
+
+  if (["admin", "user"].includes(body.role)) target.role = body.role;
+  if (["active", "disabled"].includes(body.status)) target.status = body.status;
+  if (context.db.plans.some(plan => plan.id === body.planId)) target.planId = body.planId;
+  writeDb(context.db);
+  sendJson(res, 200, { user: publicUser(target) });
+}
+
+async function handleAdminPlan(req, res) {
+  const context = requireAdmin(req, res);
+  if (!context) return;
+
+  const body = await jsonBody(req);
+  const id = String(body.id || body.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  if (!id || !body.name) {
+    sendJson(res, 400, { error: "Plan id and name are required." });
+    return;
+  }
+
+  const plan = {
+    id,
+    name: String(body.name).trim().slice(0, 60),
+    price: Number(body.price || 0),
+    currency: String(body.currency || "USD").toUpperCase().slice(0, 3),
+    interval: String(body.interval || "month").slice(0, 20),
+    messageLimit: Number(body.messageLimit || 100),
+    providerAccess: Array.isArray(body.providerAccess) ? body.providerAccess.filter(item => ["openai", "gemini", "claude", "openrouter"].includes(item)) : ["openai"],
+    features: String(body.features || "").split("\n").map(item => item.trim()).filter(Boolean),
+    active: body.active !== false
+  };
+
+  const index = context.db.plans.findIndex(item => item.id === id);
+  if (index >= 0) context.db.plans[index] = plan;
+  else context.db.plans.push(plan);
+
+  writeDb(context.db);
+  sendJson(res, 200, { plan });
+}
+
+async function handleAdminCatalogItem(req, res, type, itemId = null) {
+  const context = requireAdmin(req, res);
+  if (!context) return;
+
+  const collection = type === "themes" ? context.db.themes : context.db.plugins;
+  const body = await jsonBody(req);
+  const id = itemId || String(body.id || body.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+  if (!id || !body.name) {
+    sendJson(res, 400, { error: "Id and name are required." });
+    return;
+  }
+
+  const item = type === "themes"
+    ? { id, name: String(body.name).trim().slice(0, 60), active: body.active !== false }
+    : {
+        id,
+        name: String(body.name).trim().slice(0, 60),
+        description: String(body.description || "").slice(0, 180),
+        prompt: String(body.prompt || "").slice(0, 1000),
+        active: body.active !== false
+      };
+
+  const index = collection.findIndex(existing => existing.id === id);
+  if (index >= 0) collection[index] = item;
+  else collection.push(item);
+
+  writeDb(context.db);
+  sendJson(res, 200, { item });
+}
+
+function serveStatic(req, res) {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const requestedPath = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
+  const resolvedPath = path.resolve(PUBLIC_DIR, `.${requestedPath}`);
+  const publicRoot = `${PUBLIC_DIR}${path.sep}`;
+
+  if (resolvedPath !== PUBLIC_DIR && !resolvedPath.startsWith(publicRoot)) {
+    res.writeHead(403);
+    res.end("Forbidden");
+    return;
+  }
+
+  fs.readFile(resolvedPath, (error, content) => {
+    if (error) {
+      fs.readFile(path.join(PUBLIC_DIR, "index.html"), (fallbackError, fallbackContent) => {
+        if (fallbackError) {
+          res.writeHead(404);
+          res.end("Not found");
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(fallbackContent);
+      });
+      return;
+    }
+
+    const contentType = mimeTypes[path.extname(resolvedPath)] || "application/octet-stream";
+    res.writeHead(200, { "Content-Type": contentType });
+    res.end(content);
+  });
+}
+
+function route(req, res) {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const pathname = url.pathname;
+
+  if (req.method === "GET" && pathname === "/healthz") {
+    sendJson(res, 200, {
+      ok: true,
+      providers: providersStatus(),
+      paypalConfigured: Boolean(PAYPAL_CLIENT_ID && PAYPAL_CLIENT_SECRET)
+    });
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/config") {
+    sendJson(res, 200, publicConfig());
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/me") {
+    const context = getSession(req);
+    sendJson(res, 200, {
+      user: publicUser(context.user),
+      plan: context.user ? planForUser(context.db, context.user) : null,
+      config: publicConfig(context.db, context.user)
+    });
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/auth/signup") return handleSignup(req, res);
+  if (req.method === "POST" && pathname === "/api/auth/login") return handleLogin(req, res);
+  if (req.method === "POST" && pathname === "/api/auth/logout") return handleLogout(req, res);
+  if (req.method === "POST" && pathname === "/api/settings/api") return handleApiSettings(req, res);
+  if (req.method === "POST" && pathname === "/api/chat") return handleChat(req, res);
+  if (req.method === "POST" && pathname === "/api/paypal/create-order") return handleCreatePayPalOrder(req, res);
+  if (req.method === "POST" && pathname === "/api/paypal/capture-order") return handleCapturePayPalOrder(req, res);
+
+  if (req.method === "GET" && pathname === "/api/admin/overview") {
+    const context = requireAdmin(req, res);
+    if (!context) return;
+    sendJson(res, 200, {
+      users: context.db.users.map(publicUser),
+      plans: context.db.plans,
+      plugins: context.db.plugins,
+      themes: context.db.themes,
+      freeModels: context.db.freeModels,
+      settings: context.db.settings,
+      payments: context.db.payments,
+      providers: providersStatus(),
+      paypalConfigured: Boolean(PAYPAL_CLIENT_ID && PAYPAL_CLIENT_SECRET)
+    });
+    return;
+  }
+
+  const userMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
+  if (req.method === "PUT" && userMatch) return handleAdminUpdateUser(req, res, userMatch[1]);
+  if (req.method === "POST" && pathname === "/api/admin/plans") return handleAdminPlan(req, res);
+  if (req.method === "POST" && pathname === "/api/admin/plugins") return handleAdminCatalogItem(req, res, "plugins");
+  if (req.method === "POST" && pathname === "/api/admin/themes") return handleAdminCatalogItem(req, res, "themes");
+  if (req.method === "POST" && pathname === "/api/admin/settings") return handleAdminSettings(req, res);
+  if (req.method === "POST" && pathname === "/api/admin/free-models") return handleAdminFreeModel(req, res);
+
+  const pluginMatch = pathname.match(/^\/api\/admin\/plugins\/([^/]+)$/);
+  if (req.method === "PUT" && pluginMatch) return handleAdminCatalogItem(req, res, "plugins", pluginMatch[1]);
+
+  const themeMatch = pathname.match(/^\/api\/admin\/themes\/([^/]+)$/);
+  if (req.method === "PUT" && themeMatch) return handleAdminCatalogItem(req, res, "themes", themeMatch[1]);
+
+  if (req.method === "GET") {
+    serveStatic(req, res);
+    return;
+  }
+
+  res.writeHead(405);
+  res.end("Method not allowed");
+}
 
 ensureDb();
-http.createServer((req, res) => Promise.resolve(route(req, res)).catch(err => json(res, 500, { error: err.message || "Server error." }))).listen(PORT, () => console.log(`AInextcode running on http://localhost:${PORT}`));
+
+const server = http.createServer((req, res) => {
+  Promise.resolve(route(req, res)).catch(error => {
+    sendJson(res, 500, { error: error.message || "Server error." });
+  });
+});
+
+server.listen(PORT, () => {
+  console.log(`AInextcode running at http://localhost:${PORT}`);
+});

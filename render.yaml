@@ -15,8 +15,6 @@ services:
         value: gemini-2.0-flash
       - key: CLAUDE_MODEL
         value: claude-sonnet-4-5
-      - key: PAYPAL_MODE
-        value: sandbox
       - key: OPENAI_API_KEY
         sync: false
       - key: GEMINI_API_KEY
@@ -24,10 +22,4 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: OPENROUTER_API_KEY
-        sync: false
-      - key: PAYPAL_CLIENT_ID
-        sync: false
-      - key: PAYPAL_CLIENT_SECRET
-        sync: false
-      - key: PAYPAL_RECEIVER_EMAIL
         sync: false

@@ -12,10 +12,6 @@ GEMINI_MODEL=gemini-2.0-flash
 ANTHROPIC_API_KEY=your_anthropic_key_here
 CLAUDE_MODEL=claude-sonnet-4-5
 OPENROUTER_API_KEY=your_openrouter_key_here
-PAYPAL_MODE=sandbox
-PAYPAL_CLIENT_ID=your_paypal_client_id_here
-PAYPAL_CLIENT_SECRET=your_paypal_client_secret_here
-PAYPAL_RECEIVER_EMAIL=you@example.com
 DATA_DIR=data
 ```
 
@@ -51,14 +47,18 @@ The included `render.yaml` can also be used as a Render blueprint.
 
 Build:
 
-```bash
+```powershell
 docker build -t ainextcode .
 ```
 
 Run:
 
-```bash
-docker run -p 3000:3000 --env-file .env ainextcode
+```powershell
+docker run -p 3000:3000 `
+  -e OPENAI_API_KEY="your_openai_key_here" `
+  -e GEMINI_API_KEY="your_gemini_key_here" `
+  -e ANTHROPIC_API_KEY="your_anthropic_key_here" `
+  ainextcode
 ```
 
 Open:
@@ -67,16 +67,10 @@ Open:
 http://localhost:3000
 ```
 
-## PayPal
-
-The app creates PayPal Orders and captures them after approval. For production subscriptions, add PayPal webhooks and store recurring billing agreement data.
-
-The admin panel can store a PayPal receiver email for display/manual billing workflows.
-
 ## Health Check
 
 ```text
 /healthz
 ```
 
-The health check reports provider configuration and PayPal configuration status.
+The health check reports provider configuration status.

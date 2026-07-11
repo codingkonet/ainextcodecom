@@ -1,47 +1,220 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AInextcode</title>
-  <link rel="stylesheet" href="/styles.css">
-</head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="#home"><span class="mark">AI</span><span>AInextcode</span></a>
-    <nav><a href="#home">Home</a><a href="#pricing">Plans</a><a href="#app">Workspace</a><a id="adminLink" href="#admin" hidden>Admin</a></nav>
-    <div class="actions"><button id="themeToggle" class="secondary">Theme</button><button id="loginOpen" class="secondary">Log in</button><button id="signupOpen">Sign up</button><button id="logout" class="secondary" hidden>Log out</button></div>
-  </header>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AInextcode</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#home" aria-label="AInextcode home">
+        <span class="brand-mark">AI</span>
+        <span>AInextcode</span>
+      </a>
 
-  <main>
-    <section id="homeView" class="view landing">
-      <div class="hero">
-        <div><p class="eyebrow">OpenAI + Gemini + Claude + Free models</p><h1>Launch your own AI assistant service.</h1><p class="lead">AInextcode gives you a ready SaaS workspace with users, plans, PayPal hooks, user API keys, plugins, themes, and multi-model chat.</p><button id="heroSignup">Start building</button><a class="link" href="#pricing">View plans</a></div>
-        <div class="panel"><h2>Provider status</h2><div class="status"><span>OpenAI</span><b data-provider-status="openai">Checking</b></div><div class="status"><span>Gemini</span><b data-provider-status="gemini">Checking</b></div><div class="status"><span>Claude</span><b data-provider-status="claude">Checking</b></div><div class="status"><span>OpenRouter Free</span><b data-provider-status="openrouter">Checking</b></div></div>
+      <nav class="nav">
+        <a href="#home">Home</a>
+        <a href="#app" data-auth-link>Workspace</a>
+        <a href="#admin" data-admin-link hidden>Admin</a>
+      </nav>
+
+      <div class="account-actions">
+        <button id="themeToggle" class="icon-button" type="button" title="Switch theme">Theme</button>
+        <button id="loginOpen" class="secondary-button" type="button">Log in</button>
+        <button id="signupOpen" type="button">Sign up</button>
+        <button id="logout" class="secondary-button" type="button" hidden>Log out</button>
       </div>
-      <div class="features"><article><h2>Multi-model</h2><p>Route chats to OpenAI, Gemini, Claude, or OpenRouter free model presets.</p></article><article><h2>Free model presets</h2><p>Add and manage extra free model choices from the admin panel.</p></article><article><h2>Billing-ready</h2><p>Plan limits, PayPal checkout hooks, and an editable PayPal receiver email.</p></article></div>
-    </section>
+    </header>
 
-    <section id="pricingView" class="view section"><p class="eyebrow">Plans</p><h1>Choose a plan</h1><div id="plans" class="pricing"></div></section>
+    <main>
+      <section id="homeView" class="view landing">
+        <div class="hero">
+          <div class="hero-copy">
+            <p class="eyebrow">Free AI workspace</p>
+            <h1>AInextcode is free for everyone.</h1>
+            <p class="hero-text">Chat with OpenAI, Gemini, Claude, and free OpenRouter models from one clean workspace. Bring your own API keys, switch models anytime, and use plugins and themes without paid plans.</p>
+            <div class="hero-actions">
+              <button id="heroSignup" type="button">Start free</button>
+              <a class="text-link" href="#app">Open workspace</a>
+            </div>
+          </div>
+          <div class="hero-panel hero-terminal">
+            <div class="terminal-title">
+              <span>AInextcode terminal</span>
+              <strong>FREE</strong>
+            </div>
+            <div class="terminal-line"><span>You</span><p>Use OpenRouter free models for a product idea.</p></div>
+            <div class="terminal-line assistant-line"><span>AI</span><p>Sure. I can help you plan, write, code, and compare models in one place.</p></div>
+            <div class="model-stack compact-stack">
+              <div><strong>OpenAI</strong><span data-provider-status="openai">Checking</span></div>
+              <div><strong>Gemini</strong><span data-provider-status="gemini">Checking</span></div>
+              <div><strong>Claude</strong><span data-provider-status="claude">Checking</span></div>
+              <div><strong>OpenRouter</strong><span data-provider-status="openrouter">Checking</span></div>
+            </div>
+          </div>
+        </div>
 
-    <section id="appView" class="view app" hidden>
-      <aside class="sidebar">
-        <p class="eyebrow">Workspace</p><h1>AI chat</h1><p id="planBadge" class="muted"></p>
-        <label>Provider<select id="provider"></select></label>
-        <label>Model<input id="model" list="freeModelPresets"></label><datalist id="freeModelPresets"></datalist>
-        <details class="api-box"><summary>API Settings</summary><form id="apiSettingsForm" class="stack"><p id="apiKeyStatus" class="muted"></p><input name="openaiKey" placeholder="OpenAI API key"><input name="openaiModel" placeholder="OpenAI model"><label class="check"><input name="clearOpenai" type="checkbox"> Clear OpenAI key</label><input name="geminiKey" placeholder="Gemini API key"><input name="geminiModel" placeholder="Gemini model"><label class="check"><input name="clearGemini" type="checkbox"> Clear Gemini key</label><input name="claudeKey" placeholder="Claude API key"><input name="claudeModel" placeholder="Claude model"><label class="check"><input name="clearClaude" type="checkbox"> Clear Claude key</label><input name="openrouterKey" placeholder="OpenRouter API key"><input name="openrouterModel" placeholder="OpenRouter model"><label class="check"><input name="clearOpenrouter" type="checkbox"> Clear OpenRouter key</label><button>Save API settings</button></form></details>
-        <label>Specialization<select id="specialization"><option value="general help">General help</option><option value="business planning and marketing">Business</option><option value="education and tutoring">Education</option><option value="coding and debugging">Coding</option><option value="customer support">Customer support</option></select></label>
-        <p class="field-title">Plugins</p><div id="pluginList" class="checks"></div><p class="field-title">Themes</p><div id="themeList" class="checks"></div><button id="clear" class="secondary">Clear chat</button>
-      </aside>
-      <section class="chat"><div id="messages" class="messages"></div><form id="chat-form" class="composer"><textarea id="message" placeholder="Ask the assistant..." required></textarea><button id="send">Send</button></form></section>
-    </section>
+        <div class="feature-grid">
+          <article>
+            <h2>All providers free</h2>
+            <p>Use OpenAI, Gemini, Claude, and OpenRouter access from the same workspace.</p>
+          </article>
+          <article>
+            <h2>No paid plans</h2>
+            <p>The app is now free-only. Users sign up and start using the assistant.</p>
+          </article>
+          <article>
+            <h2>Customizable</h2>
+            <p>Add plugins, themes, and free model presets from the admin panel.</p>
+          </article>
+        </div>
+      </section>
 
-    <section id="adminView" class="view section" hidden><p class="eyebrow">Admin</p><h1>Control panel</h1><div class="admin"><section class="panel"><h2>Users</h2><div id="adminUsers"></div></section><section class="panel"><h2>Plans</h2><form id="planForm" class="stack"><input name="id" placeholder="plan-id"><input name="name" placeholder="Plan name" required><input name="price" type="number" placeholder="Price"><input name="messageLimit" type="number" placeholder="Message limit"><label class="check"><input name="openai" type="checkbox" checked> OpenAI</label><label class="check"><input name="gemini" type="checkbox"> Gemini</label><label class="check"><input name="claude" type="checkbox"> Claude</label><label class="check"><input name="openrouter" type="checkbox" checked> OpenRouter Free</label><textarea name="features" placeholder="One feature per line"></textarea><button>Save plan</button></form><div id="adminPlans"></div></section><section class="panel"><h2>Payments</h2><form id="settingsForm" class="stack"><input name="paypalEmail" type="email" placeholder="PayPal receiver email"><button>Save PayPal email</button></form><div id="adminSettings"></div></section><section class="panel"><h2>Free Models</h2><form id="freeModelForm" class="stack"><input name="name" placeholder="Display name" required><input name="model" placeholder="openrouter/model-name:free" required><button>Add free model</button></form><div id="adminFreeModels"></div></section><section class="panel"><h2>Plugins</h2><form id="pluginForm" class="stack"><input name="name" placeholder="Plugin name" required><input name="description" placeholder="Description"><textarea name="prompt" placeholder="Prompt instructions"></textarea><button>Add plugin</button></form><div id="adminPlugins"></div></section><section class="panel"><h2>Themes</h2><form id="themeForm" class="stack"><input name="name" placeholder="Theme name" required><button>Add theme</button></form><div id="adminThemes"></div></section></div></section>
-  </main>
+      <section id="appView" class="view app-shell" hidden>
+        <aside class="settings">
+          <div>
+            <p class="eyebrow">Workspace</p>
+            <h1>AI chat</h1>
+            <p id="planBadge" class="muted"></p>
+          </div>
 
-  <footer class="footer">Copyright &copy; 2026 AInextcode. All rights reserved.</footer>
-  <dialog id="authDialog"><form id="authForm" class="auth"><button id="authClose" type="button" class="close">Close</button><p class="eyebrow" id="authModeLabel">Account</p><h1 id="authTitle">Log in</h1><input name="name" placeholder="Name"><input name="email" type="email" placeholder="Email" required><input name="password" type="password" placeholder="Password" required><button id="authSubmit">Continue</button><p id="authMessage" class="error"></p></form></dialog>
-  <div id="toast" class="toast" hidden></div>
-  <script src="/app.js"></script>
-</body>
+          <label>
+            Provider
+            <select id="provider"></select>
+          </label>
+
+          <label>
+            Model
+            <input id="model" list="freeModelPresets" autocomplete="off">
+            <datalist id="freeModelPresets"></datalist>
+          </label>
+
+          <details class="api-settings">
+            <summary>API Settings</summary>
+            <form id="apiSettingsForm" class="stack-form">
+              <p id="apiKeyStatus" class="muted"></p>
+              <input name="openaiKey" placeholder="OpenAI API key">
+              <input name="openaiModel" placeholder="OpenAI model">
+              <label class="inline-check"><input name="clearOpenai" type="checkbox"> Clear OpenAI key</label>
+              <input name="geminiKey" placeholder="Gemini API key">
+              <input name="geminiModel" placeholder="Gemini model">
+              <label class="inline-check"><input name="clearGemini" type="checkbox"> Clear Gemini key</label>
+              <input name="claudeKey" placeholder="Claude API key">
+              <input name="claudeModel" placeholder="Claude model">
+              <label class="inline-check"><input name="clearClaude" type="checkbox"> Clear Claude key</label>
+              <input name="openrouterKey" placeholder="OpenRouter API key">
+              <input name="openrouterModel" placeholder="OpenRouter free model slug">
+              <label class="inline-check"><input name="clearOpenrouter" type="checkbox"> Clear OpenRouter key</label>
+              <button type="submit">Save API settings</button>
+            </form>
+          </details>
+
+          <label>
+            Specialization
+            <select id="specialization">
+              <option value="general help">General help</option>
+              <option value="small business planning, marketing, customer messages, and productivity">Business</option>
+              <option value="education, study planning, tutoring, and simple explanations">Education</option>
+              <option value="coding, debugging, architecture, and developer productivity">Coding</option>
+              <option value="customer support, response drafting, and issue resolution">Customer support</option>
+              <option value="finance education, budgeting, and decision support without giving regulated financial advice">Finance education</option>
+            </select>
+          </label>
+
+          <div>
+            <p class="field-title">Plugins</p>
+            <div id="pluginList" class="check-list"></div>
+          </div>
+
+          <div>
+            <p class="field-title">Themes</p>
+            <div id="themeList" class="theme-list"></div>
+          </div>
+
+          <button id="clear" class="secondary-button" type="button">Clear chat</button>
+        </aside>
+
+        <section class="chat-panel">
+          <div id="messages" class="messages" aria-live="polite"></div>
+          <form id="chat-form" class="composer">
+            <textarea id="message" rows="3" placeholder="Ask the assistant..." required></textarea>
+            <button id="send" type="submit">Send</button>
+          </form>
+        </section>
+      </section>
+
+      <section id="adminView" class="view section" hidden>
+        <div class="section-heading">
+          <p class="eyebrow">Admin</p>
+          <h1>Control panel</h1>
+        </div>
+
+        <div class="admin-grid">
+          <section>
+            <div class="panel-heading">
+              <h2>Users</h2>
+            </div>
+            <div id="adminUsers" class="table-wrap"></div>
+          </section>
+
+          <section>
+            <div class="panel-heading">
+              <h2>Plugins</h2>
+            </div>
+            <form id="pluginForm" class="stack-form">
+              <input name="name" placeholder="Plugin name" required>
+              <input name="description" placeholder="Short description">
+              <textarea name="prompt" rows="3" placeholder="Prompt instructions"></textarea>
+              <button type="submit">Add plugin</button>
+            </form>
+            <div id="adminPlugins" class="item-list"></div>
+          </section>
+
+          <section>
+            <div class="panel-heading">
+              <h2>Themes</h2>
+            </div>
+            <form id="themeForm" class="stack-form">
+              <input name="name" placeholder="Theme name" required>
+              <button type="submit">Add theme</button>
+            </form>
+            <div id="adminThemes" class="item-list"></div>
+          </section>
+          <section>
+            <div class="panel-heading">
+              <h2>Free Models</h2>
+            </div>
+            <form id="freeModelForm" class="stack-form">
+              <input name="name" placeholder="Display name" required>
+              <input name="model" placeholder="OpenRouter model slug, e.g. model/name:free" required>
+              <button type="submit">Add free model</button>
+            </form>
+            <div id="adminFreeModels" class="item-list"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      Copyright &copy; 2026 AInextcode. All rights reserved.
+    </footer>
+
+    <dialog id="authDialog">
+      <form id="authForm" class="auth-card">
+        <button id="authClose" class="close-button" type="button">Close</button>
+        <p class="eyebrow" id="authModeLabel">Account</p>
+        <h1 id="authTitle">Log in</h1>
+        <input name="name" placeholder="Name" autocomplete="name">
+        <input name="email" placeholder="Email" type="email" autocomplete="email" required>
+        <input name="password" placeholder="Password" type="password" autocomplete="current-password" required>
+        <button id="authSubmit" type="submit">Continue</button>
+        <p id="authMessage" class="form-message"></p>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script src="/app.js"></script>
+  </body>
 </html>

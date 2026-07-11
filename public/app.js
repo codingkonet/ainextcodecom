@@ -1,43 +1,498 @@
-const $ = s => document.querySelector(s);
-const $$ = s => Array.from(document.querySelectorAll(s));
-const state = { user: null, plan: null, config: { providers: [], plans: [], plugins: [], themes: [], freeModels: [] }, messages: [], selectedTheme: localStorage.getItem("theme") || "sage", authMode: "login" };
-const views = { home: $("#homeView"), pricing: $("#pricingView"), app: $("#appView"), admin: $("#adminView") };
-const provider = $("#provider"), model = $("#model"), messagesEl = $("#messages"), apiForm = $("#apiSettingsForm"), auth = $("#authDialog"), authForm = $("#authForm"), toast = $("#toast");
+const state = {
+  user: null,
+  plan: null,
+  config: { providers: [], plugins: [], themes: [] },
+  messages: [],
+  admin: null,
+  authMode: "login",
+  selectedTheme: localStorage.getItem("theme") || "sage"
+};
 
-async function api(path, options = {}) { const r = await fetch(path, { credentials: "include", headers: { "Content-Type": "application/json", ...(options.headers || {}) }, ...options }); const data = await r.json().catch(() => ({})); if (!r.ok) throw new Error(data.error || "Request failed"); return data; }
-function note(text) { toast.textContent = text; toast.hidden = false; clearTimeout(note.t); note.t = setTimeout(() => toast.hidden = true, 3500); }
-function theme(id) { state.selectedTheme = id; localStorage.setItem("theme", id); document.body.className = `theme-${id}`; }
-function route() { const page = (location.hash || "#home").slice(1); Object.values(views).forEach(v => v.hidden = true); if (page === "app") { if (!state.user) openAuth("login"); views.app.hidden = false; } else if (page === "admin") { if (!state.user) openAuth("login"); views.admin.hidden = false; loadAdmin(); } else if (page === "pricing") views.pricing.hidden = false; else views.home.hidden = false; }
-function renderAuth() { const on = !!state.user; $("#loginOpen").hidden = on; $("#signupOpen").hidden = on; $("#logout").hidden = !on; $("#adminLink").hidden = !state.user || state.user.role !== "admin"; }
-function renderStatus() { for (const p of state.config.providers) { const el = document.querySelector(`[data-provider-status="${p.id}"]`); if (el) el.textContent = p.source === "user" ? "Your key" : p.source === "server" ? "Server key" : "Needs key"; } }
-function renderPlans() { $("#plans").innerHTML = state.config.plans.map(p => `<article class="card"><h2>${p.name}</h2><div class="price">$${p.price}<small>/${p.interval}</small></div><p>${p.messageLimit} messages/month</p><p>${p.providerAccess.join(", ")}</p><ul>${p.features.map(f => `<li>${escapeHtml(f)}</li>`).join("")}</ul><button data-plan="${p.id}">${p.price ? "Pay with PayPal" : "Choose free"}</button></article>`).join(""); $$('[data-plan]').forEach(b => b.onclick = () => choosePlan(b.dataset.plan)); }
-function renderFreeModelPresets() { const list = $("#freeModelPresets"); if (!list) return; list.innerHTML = (state.config.freeModels || []).map(m => `<option value="${escapeHtml(m.model)}" label="${escapeHtml(m.name)}"></option>`).join(""); }
-function renderProviders() { const allowed = state.plan?.providerAccess || ["openai", "openrouter"]; const old = provider.value; provider.innerHTML = state.config.providers.map(p => `<option value="${p.id}" data-model="${p.defaultModel}" ${!allowed.includes(p.id) ? "disabled" : ""}>${p.name} (${p.source === "user" ? "your key" : p.source === "server" ? "server key" : "not configured"})</option>`).join(""); const chosen = state.config.providers.find(p => p.id === old && allowed.includes(p.id)) || state.config.providers.find(p => allowed.includes(p.id)); if (chosen) { provider.value = chosen.id; model.value = chosen.defaultModel; } }
-function renderApiSettings() { if (!state.user) return; const s = state.user.apiKeyStatus || {}; $("#apiKeyStatus").textContent = `OpenAI: ${s.openai ? "saved" : "not saved"} | Gemini: ${s.gemini ? "saved" : "not saved"} | Claude: ${s.claude ? "saved" : "not saved"} | OpenRouter: ${s.openrouter ? "saved" : "not saved"}`; const m = state.user.modelPrefs || {}; apiForm.elements.openaiModel.value = m.openai || ""; apiForm.elements.geminiModel.value = m.gemini || ""; apiForm.elements.claudeModel.value = m.claude || ""; apiForm.elements.openrouterModel.value = m.openrouter || ""; }
-function renderWorkspace() { renderFreeModelPresets(); renderProviders(); renderApiSettings(); $("#planBadge").textContent = state.plan ? `${state.plan.name} plan: ${state.plan.messageLimit} messages/month` : ""; $("#pluginList").innerHTML = state.config.plugins.map(p => `<label class="check"><input type="checkbox" value="${p.id}"> ${escapeHtml(p.name)}</label>`).join(""); $("#themeList").innerHTML = state.config.themes.map(t => `<button type="button" data-theme="${t.id}" class="secondary">${escapeHtml(t.name)}</button>`).join(""); $$('[data-theme]').forEach(b => b.onclick = () => theme(b.dataset.theme)); renderChat(); }
-function renderChat() { messagesEl.innerHTML = state.messages.length ? state.messages.map(m => `<div class="msg ${m.role}">${escapeHtml(m.content)}</div>`).join("") : `<div class="empty"><b>Ready when you are.</b><br>Choose a provider, enable plugins, and start a conversation.</div>`; messagesEl.scrollTop = messagesEl.scrollHeight; }
-function renderAll() { renderAuth(); renderStatus(); renderPlans(); renderWorkspace(); route(); }
-function escapeHtml(x) { return String(x).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
-async function refresh() { const data = await api("/api/me"); state.user = data.user; state.plan = data.plan; state.config = data.config; }
-function selectedPlugins() { return $$("#pluginList input:checked").map(x => x.value); }
-function add(role, content) { state.messages.push({ role, content }); renderChat(); }
-async function send() { const btn = $("#send"); btn.disabled = true; btn.textContent = "Sending"; try { const data = await api("/api/chat", { method: "POST", body: JSON.stringify({ messages: state.messages, provider: provider.value, model: model.value, specialization: $("#specialization").value, plugins: selectedPlugins() }) }); add("assistant", data.message); } catch (e) { add("error", e.message); } finally { btn.disabled = false; btn.textContent = "Send"; } }
-function openAuth(mode) { state.authMode = mode; $("#authTitle").textContent = mode === "signup" ? "Sign up" : "Log in"; $("#authSubmit").textContent = mode === "signup" ? "Create account" : "Log in"; authForm.elements.name.hidden = mode !== "signup"; $("#authMessage").textContent = ""; auth.showModal(); }
-async function choosePlan(planId) { if (!state.user) return openAuth("signup"); try { const data = await api("/api/paypal/create-order", { method: "POST", body: JSON.stringify({ planId }) }); if (data.free) { await refresh(); renderAll(); note("Plan updated"); } else if (data.approveUrl) location.href = data.approveUrl; else note(data.error || "PayPal is not fully configured yet"); } catch (e) { note(e.message); } }
-async function loadAdmin() { if (!state.user || state.user.role !== "admin") return; try { const data = await api("/api/admin/overview"); $("#adminUsers").innerHTML = `<table><tr><th>Name</th><th>Email</th><th>Role</th><th>Plan</th><th>Status</th><th></th></tr>${data.users.map(u => `<tr><td>${escapeHtml(u.name)}</td><td>${escapeHtml(u.email)}</td><td><select data-role="${u.id}"><option ${u.role === "user" ? "selected" : ""}>user</option><option ${u.role === "admin" ? "selected" : ""}>admin</option></select></td><td><select data-plan-user="${u.id}">${data.plans.map(p => `<option value="${p.id}" ${u.planId === p.id ? "selected" : ""}>${escapeHtml(p.name)}</option>`).join("")}</select></td><td><select data-status="${u.id}"><option ${u.status === "active" ? "selected" : ""}>active</option><option ${u.status === "disabled" ? "selected" : ""}>disabled</option></select></td><td><button data-save="${u.id}">Save</button></td></tr>`).join("")}</table>`; $("#adminPlans").innerHTML = data.plans.map(p => `<p><b>${escapeHtml(p.name)}</b> - $${p.price}/${p.interval} - ${p.providerAccess.join(", ")}</p>`).join(""); $("#adminPlugins").innerHTML = data.plugins.map(p => `<p><b>${escapeHtml(p.name)}</b> - ${escapeHtml(p.description || "")}</p>`).join(""); $("#adminThemes").innerHTML = data.themes.map(t => `<p><b>${escapeHtml(t.name)}</b></p>`).join(""); $("#adminFreeModels").innerHTML = (data.freeModels || []).map(m => `<p><b>${escapeHtml(m.name)}</b> - ${escapeHtml(m.model)}</p>`).join(""); const email = data.settings?.paypalEmail || ""; $("#adminSettings").textContent = email ? `PayPal email: ${email}` : "No PayPal email saved."; $("#settingsForm").elements.paypalEmail.value = email; $$('[data-save]').forEach(b => b.onclick = () => saveUser(b.dataset.save)); } catch (e) { note(e.message); } }
-async function saveUser(id) { await api(`/api/admin/users/${id}`, { method: "PUT", body: JSON.stringify({ role: document.querySelector(`[data-role="${id}"]`).value, planId: document.querySelector(`[data-plan-user="${id}"]`).value, status: document.querySelector(`[data-status="${id}"]`).value }) }); await loadAdmin(); note("User saved"); }
-async function addAdminItem(e, endpoint) { e.preventDefault(); const data = Object.fromEntries(new FormData(e.target)); if (endpoint.endsWith("plans")) data.providerAccess = ["openai", "gemini", "claude", "openrouter"].filter(p => data[p] === "on"); await api(endpoint, { method: "POST", body: JSON.stringify(data) }); e.target.reset(); await refresh(); renderAll(); await loadAdmin(); note("Saved"); }
+const $ = selector => document.querySelector(selector);
+const $$ = selector => Array.from(document.querySelectorAll(selector));
 
-$("#chat-form").onsubmit = e => { e.preventDefault(); const text = $("#message").value.trim(); if (!text) return; $("#message").value = ""; add("user", text); send(); };
-provider.onchange = () => { const p = state.config.providers.find(x => x.id === provider.value); if (p) model.value = p.defaultModel; };
-$("#clear").onclick = () => { state.messages = []; renderChat(); };
-$("#loginOpen").onclick = () => openAuth("login"); $("#signupOpen").onclick = () => openAuth("signup"); $("#heroSignup").onclick = () => openAuth("signup"); $("#authClose").onclick = () => auth.close();
-$("#logout").onclick = async () => { await api("/api/auth/logout", { method: "POST", body: "{}" }); state.user = null; state.plan = null; state.messages = []; renderAll(); location.hash = "#home"; };
-$("#themeToggle").onclick = () => { const themes = state.config.themes.length ? state.config.themes : [{ id: "sage" }, { id: "midnight" }, { id: "paper" }]; const i = themes.findIndex(t => t.id === state.selectedTheme); theme(themes[(i + 1) % themes.length].id); };
-authForm.onsubmit = async e => { e.preventDefault(); try { const endpoint = state.authMode === "signup" ? "/api/auth/signup" : "/api/auth/login"; await api(endpoint, { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(authForm))) }); await refresh(); auth.close(); authForm.reset(); renderAll(); location.hash = "#app"; } catch (err) { $("#authMessage").textContent = err.message; } };
-apiForm.onsubmit = async e => { e.preventDefault(); const v = Object.fromEntries(new FormData(apiForm)); const data = await api("/api/settings/api", { method: "POST", body: JSON.stringify({ openaiKey: v.openaiKey, geminiKey: v.geminiKey, claudeKey: v.claudeKey, openrouterKey: v.openrouterKey, models: { openai: v.openaiModel, gemini: v.geminiModel, claude: v.claudeModel, openrouter: v.openrouterModel }, clear: { openai: v.clearOpenai === "on", gemini: v.clearGemini === "on", claude: v.clearClaude === "on", openrouter: v.clearOpenrouter === "on" } }) }); state.user = data.user; state.config = data.config; apiForm.reset(); renderAll(); note("API settings saved"); };
-$("#settingsForm").onsubmit = async e => { e.preventDefault(); await api("/api/admin/settings", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(e.target))) }); await loadAdmin(); note("PayPal email saved"); };
-$("#freeModelForm").onsubmit = e => addAdminItem(e, "/api/admin/free-models");
-$("#planForm").onsubmit = e => addAdminItem(e, "/api/admin/plans"); $("#pluginForm").onsubmit = e => addAdminItem(e, "/api/admin/plugins"); $("#themeForm").onsubmit = e => addAdminItem(e, "/api/admin/themes");
-window.onhashchange = route;
-(async function init() { theme(state.selectedTheme); try { await refresh(); } catch { state.config = await api("/api/config"); } renderAll(); })();
+const views = {
+  home: $("#homeView"),
+  app: $("#appView"),
+  admin: $("#adminView")
+};
+
+const messagesEl = $("#messages");
+const form = $("#chat-form");
+const input = $("#message");
+const sendButton = $("#send");
+const providerSelect = $("#provider");
+const modelInput = $("#model");
+const pluginList = $("#pluginList");
+const themeList = $("#themeList");
+const planBadge = $("#planBadge");
+const authDialog = $("#authDialog");
+const authForm = $("#authForm");
+const authMessage = $("#authMessage");
+const apiSettingsForm = $("#apiSettingsForm");
+const toast = $("#toast");
+
+function showToast(message) {
+  toast.textContent = message;
+  toast.hidden = false;
+  window.clearTimeout(showToast.timer);
+  showToast.timer = window.setTimeout(() => {
+    toast.hidden = true;
+  }, 3600);
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || "Request failed.");
+  }
+  return data;
+}
+
+function applyTheme(themeId) {
+  state.selectedTheme = themeId;
+  localStorage.setItem("theme", themeId);
+  document.body.className = document.body.className
+    .split(" ")
+    .filter(name => name && !name.startsWith("theme-"))
+    .join(" ");
+  document.body.classList.add(`theme-${themeId}`);
+}
+
+function route() {
+  const current = (location.hash || "#home").replace("#", "");
+  for (const view of Object.values(views).filter(Boolean)) view.hidden = true;
+
+  if (current === "admin") {
+    if (!state.user) openAuth("login");
+    views.admin.hidden = false;
+    loadAdmin();
+    return;
+  }
+
+  if (current === "app") {
+    if (!state.user) openAuth("login");
+    views.app.hidden = false;
+    return;
+  }
+
+  views.home.hidden = false;
+}
+
+function renderAuthState() {
+  const loggedIn = Boolean(state.user);
+  $("#loginOpen").hidden = loggedIn;
+  $("#signupOpen").hidden = loggedIn;
+  $("#logout").hidden = !loggedIn;
+  $$("[data-auth-link]").forEach(link => {
+    link.textContent = loggedIn ? "Workspace" : "Log in";
+  });
+  $$("[data-admin-link]").forEach(link => {
+    link.hidden = !state.user || state.user.role !== "admin";
+  });
+}
+
+function renderProviderStatus() {
+  for (const provider of state.config.providers) {
+    const item = document.querySelector(`[data-provider-status="${provider.id}"]`);
+    if (!item) continue;
+    if (provider.source === "user") item.textContent = "Your key";
+    else if (provider.source === "server") item.textContent = "Server key";
+    else item.textContent = "Needs key";
+  }
+}
+
+function renderFreeModelPresets() {
+  const list = $("#freeModelPresets");
+  if (!list) return;
+
+  list.innerHTML = (state.config.freeModels || [])
+    .map(model => `<option value="${model.model}">${model.name}</option>`)
+    .join("");
+}
+
+function renderProviders() {
+  const previousProvider = providerSelect.value;
+  providerSelect.innerHTML = "";
+  const allowed = state.plan?.providerAccess || ["openai", "gemini", "claude", "openrouter"];
+
+  for (const provider of state.config.providers) {
+    const option = document.createElement("option");
+    option.value = provider.id;
+    const sourceLabel = provider.source === "user" ? "your key" : provider.source === "server" ? "server key" : "not configured";
+    option.textContent = `${provider.name} (${sourceLabel})`;
+    option.disabled = !allowed.includes(provider.id);
+    option.dataset.model = provider.defaultModel;
+    providerSelect.append(option);
+  }
+
+  const selected = state.config.providers.find(provider => provider.id === previousProvider && allowed.includes(provider.id))
+    || state.config.providers.find(provider => allowed.includes(provider.id))
+    || state.config.providers[0];
+  if (selected) {
+    providerSelect.value = selected.id;
+    modelInput.value = selected.defaultModel;
+  }
+}
+
+function renderApiSettings() {
+  if (!state.user || !apiSettingsForm) return;
+
+  const status = state.user.apiKeyStatus || {};
+  $("#apiKeyStatus").textContent = [
+    `OpenAI: ${status.openai ? "saved" : "not saved"}`,
+    `Gemini: ${status.gemini ? "saved" : "not saved"}`,
+    `Claude: ${status.claude ? "saved" : "not saved"}`,
+    `OpenRouter: ${status.openrouter ? "saved" : "not saved"}`
+  ].join(" | ");
+
+  const prefs = state.user.modelPrefs || {};
+  apiSettingsForm.elements.openaiModel.value = prefs.openai || "";
+  apiSettingsForm.elements.geminiModel.value = prefs.gemini || "";
+  apiSettingsForm.elements.claudeModel.value = prefs.claude || "";
+  apiSettingsForm.elements.openrouterModel.value = prefs.openrouter || "";
+}
+
+function renderPlugins() {
+  pluginList.innerHTML = "";
+  for (const plugin of state.config.plugins) {
+    const id = `plugin-${plugin.id}`;
+    const label = document.createElement("label");
+    label.className = "check-item";
+    label.innerHTML = `<input id="${id}" type="checkbox" value="${plugin.id}"> ${plugin.name}`;
+    pluginList.append(label);
+  }
+}
+
+function renderThemes() {
+  themeList.innerHTML = "";
+  for (const theme of state.config.themes) {
+    const button = document.createElement("button");
+    button.className = "theme-chip";
+    button.type = "button";
+    button.textContent = theme.name;
+    button.addEventListener("click", () => applyTheme(theme.id));
+    themeList.append(button);
+  }
+}
+
+function renderChat() {
+  messagesEl.innerHTML = "";
+
+  if (state.messages.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.innerHTML = "<strong>Ready when you are.</strong>Choose a provider, enable plugins, and start a conversation.";
+    messagesEl.append(empty);
+    return;
+  }
+
+  for (const message of state.messages) {
+    const item = document.createElement("div");
+    item.className = `message ${message.role}`;
+    item.textContent = message.content;
+    messagesEl.append(item);
+  }
+
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function renderWorkspace() {
+  renderProviders();
+  renderFreeModelPresets();
+  renderApiSettings();
+  renderPlugins();
+  renderThemes();
+  renderChat();
+  planBadge.textContent = state.plan
+    ? `Free access: ${state.plan.providerAccess.join(", ")}`
+    : "";
+}
+
+function renderAll() {
+  renderAuthState();
+  renderProviderStatus();
+  renderWorkspace();
+  route();
+}
+
+function addMessage(role, content) {
+  state.messages.push({ role, content });
+  renderChat();
+}
+
+function selectedPlugins() {
+  return $$(`#pluginList input:checked`).map(input => input.value);
+}
+
+async function sendMessage() {
+  sendButton.disabled = true;
+  sendButton.textContent = "Sending";
+
+  try {
+    const data = await api("/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        messages: state.messages,
+        provider: providerSelect.value,
+        model: modelInput.value.trim(),
+        specialization: $("#specialization").value,
+        plugins: selectedPlugins()
+      })
+    });
+    addMessage("assistant", data.message);
+    if (data.usage && data.limit) {
+      planBadge.textContent = `Free access: ${data.usage}/${data.limit} messages used`;
+    }
+  } catch (error) {
+    addMessage("error", error.message);
+  } finally {
+    sendButton.disabled = false;
+    sendButton.textContent = "Send";
+    input.focus();
+  }
+}
+
+function openAuth(mode) {
+  state.authMode = mode;
+  authMessage.textContent = "";
+  $("#authModeLabel").textContent = mode === "signup" ? "Create account" : "Account";
+  $("#authTitle").textContent = mode === "signup" ? "Sign up" : "Log in";
+  $("#authSubmit").textContent = mode === "signup" ? "Create account" : "Log in";
+  authForm.elements.name.hidden = mode !== "signup";
+  authDialog.showModal();
+}
+
+async function refreshMe() {
+  const data = await api("/api/me");
+  state.user = data.user;
+  state.plan = data.plan;
+  state.config = data.config;
+}
+
+async function loadAdmin() {
+  if (!state.user || state.user.role !== "admin") return;
+
+  try {
+    state.admin = await api("/api/admin/overview");
+    renderAdmin();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function renderAdmin() {
+  if (!state.admin) return;
+
+  $("#adminUsers").innerHTML = `
+    <table>
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${state.admin.users.map(user => `
+          <tr>
+            <td>${user.name}</td>
+            <td>${user.email}</td>
+            <td>
+              <select data-user-role="${user.id}">
+                <option ${user.role === "user" ? "selected" : ""}>user</option>
+                <option ${user.role === "admin" ? "selected" : ""}>admin</option>
+              </select>
+            </td>
+            <td>
+              <select data-user-status="${user.id}">
+                <option ${user.status === "active" ? "selected" : ""}>active</option>
+                <option ${user.status === "disabled" ? "selected" : ""}>disabled</option>
+              </select>
+            </td>
+            <td><button type="button" data-save-user="${user.id}">Save</button></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+
+  $("#adminPlugins").innerHTML = state.admin.plugins.map(plugin => `
+    <div class="item-row">
+      <div><strong>${plugin.name}</strong><br><span class="muted">${plugin.description}</span></div>
+      <span class="status-pill">${plugin.active ? "Active" : "Hidden"}</span>
+    </div>
+  `).join("");
+
+  $("#adminThemes").innerHTML = state.admin.themes.map(theme => `
+    <div class="item-row">
+      <strong>${theme.name}</strong>
+      <span class="status-pill">${theme.active ? "Active" : "Hidden"}</span>
+    </div>
+  `).join("");
+
+  $("#adminFreeModels").innerHTML = (state.admin.freeModels || []).map(model => `
+    <div class="item-row">
+      <div><strong>${model.name}</strong><br><span class="muted">${model.model}</span></div>
+      <span class="status-pill">${model.active ? "Active" : "Hidden"}</span>
+    </div>
+  `).join("");
+
+  $$("[data-save-user]").forEach(button => {
+    button.addEventListener("click", () => saveUser(button.dataset.saveUser));
+  });
+}
+
+async function saveUser(userId) {
+  try {
+    await api(`/api/admin/users/${userId}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        role: document.querySelector(`[data-user-role="${userId}"]`).value,
+        planId: "free",
+        status: document.querySelector(`[data-user-status="${userId}"]`).value
+      })
+    });
+    await loadAdmin();
+    showToast("User saved.");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function submitCatalog(event, endpoint) {
+  event.preventDefault();
+  const data = Object.fromEntries(new FormData(event.target));
+
+  try {
+    await api(endpoint, { method: "POST", body: JSON.stringify(data) });
+    event.target.reset();
+    await refreshMe();
+    await loadAdmin();
+    renderAll();
+    showToast("Saved.");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function submitApiSettings(event) {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(apiSettingsForm));
+
+  try {
+    const data = await api("/api/settings/api", {
+      method: "POST",
+      body: JSON.stringify({
+        openaiKey: values.openaiKey,
+        geminiKey: values.geminiKey,
+        claudeKey: values.claudeKey,
+        openrouterKey: values.openrouterKey,
+        models: {
+          openai: values.openaiModel,
+          gemini: values.geminiModel,
+          claude: values.claudeModel,
+          openrouter: values.openrouterModel
+        },
+        clear: {
+          openai: values.clearOpenai === "on",
+          gemini: values.clearGemini === "on",
+          claude: values.clearClaude === "on",
+          openrouter: values.clearOpenrouter === "on"
+        }
+      })
+    });
+
+    state.user = data.user;
+    state.config = data.config;
+    apiSettingsForm.elements.openaiKey.value = "";
+    apiSettingsForm.elements.geminiKey.value = "";
+    apiSettingsForm.elements.claudeKey.value = "";
+    apiSettingsForm.elements.openrouterKey.value = "";
+    apiSettingsForm.elements.clearOpenai.checked = false;
+    apiSettingsForm.elements.clearGemini.checked = false;
+    apiSettingsForm.elements.clearClaude.checked = false;
+    apiSettingsForm.elements.clearOpenrouter.checked = false;
+    renderAll();
+    showToast("API settings saved.");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+form.addEventListener("submit", event => {
+  event.preventDefault();
+  const content = input.value.trim();
+  if (!content) return;
+  input.value = "";
+  addMessage("user", content);
+  sendMessage();
+});
+
+providerSelect.addEventListener("change", () => {
+  const provider = state.config.providers.find(item => item.id === providerSelect.value);
+  if (provider) modelInput.value = provider.defaultModel;
+});
+
+$("#clear").addEventListener("click", () => {
+  state.messages = [];
+  renderChat();
+  input.focus();
+});
+
+$("#loginOpen").addEventListener("click", () => openAuth("login"));
+$("#signupOpen").addEventListener("click", () => openAuth("signup"));
+$("#heroSignup").addEventListener("click", () => openAuth("signup"));
+$("#authClose").addEventListener("click", () => authDialog.close());
+
+$("#logout").addEventListener("click", async () => {
+  await api("/api/auth/logout", { method: "POST", body: "{}" });
+  state.user = null;
+  state.plan = null;
+  state.messages = [];
+  renderAll();
+  location.hash = "#home";
+});
+
+$("#themeToggle").addEventListener("click", () => {
+  const themes = state.config.themes.length ? state.config.themes : [{ id: "sage" }, { id: "midnight" }, { id: "paper" }, { id: "signal" }];
+  const index = themes.findIndex(theme => theme.id === state.selectedTheme);
+  applyTheme(themes[(index + 1) % themes.length].id);
+});
+
+authForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  authMessage.textContent = "";
+  const values = Object.fromEntries(new FormData(authForm));
+  const endpoint = state.authMode === "signup" ? "/api/auth/signup" : "/api/auth/login";
+
+  try {
+    const data = await api(endpoint, { method: "POST", body: JSON.stringify(values) });
+    state.user = data.user;
+    await refreshMe();
+    authDialog.close();
+    authForm.reset();
+    renderAll();
+    location.hash = "#app";
+  } catch (error) {
+    authMessage.textContent = error.message;
+  }
+});
+
+$("#pluginForm").addEventListener("submit", event => submitCatalog(event, "/api/admin/plugins"));
+$("#themeForm").addEventListener("submit", event => submitCatalog(event, "/api/admin/themes"));
+if ($("#settingsForm")) $("#settingsForm").addEventListener("submit", event => submitCatalog(event, "/api/admin/settings"));
+$("#freeModelForm").addEventListener("submit", event => submitCatalog(event, "/api/admin/free-models"));
+apiSettingsForm.addEventListener("submit", submitApiSettings);
+
+window.addEventListener("hashchange", route);
+
+(async function init() {
+  applyTheme(state.selectedTheme);
+  try {
+    await refreshMe();
+  } catch (error) {
+    const config = await api("/api/config");
+    state.config = config;
+  }
+  renderAll();
+})();

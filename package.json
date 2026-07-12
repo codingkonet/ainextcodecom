@@ -1,7 +1,7 @@
 {
   "name": "ainextcode",
   "version": "1.0.0",
-  "description": "AInextcode free multi-model AI assistant with users, admin, plugins, themes, terminal clients, Android app, and free model presets.",
+  "description": "AInextcode free multi-model AI assistant with users, admin, plugins, themes, AInextcode API provider, terminal clients, Android app, and free model presets.",
   "main": "server.js",
   "engines": {
     "node": ">=20"

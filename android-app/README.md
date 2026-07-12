@@ -37,6 +37,7 @@ Supported slash commands:
 /provider gemini
 /provider claude
 /provider openrouter
+/provider ainextcode
 /model model-name
 /clear
 ```

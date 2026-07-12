@@ -15,6 +15,9 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const AINEXTCODE_API_KEY = process.env.AINEXTCODE_API_KEY;
+const AINEXTCODE_MODEL = process.env.AINEXTCODE_MODEL || "ainextcode-agent";
+const AINEXTCODE_API_BASE_URL = (process.env.AINEXTCODE_API_BASE_URL || "https://ai.ainextcode.com/v1").replace(/\/+$/, "");
 const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
 const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
 const PAYPAL_RECEIVER_EMAIL = process.env.PAYPAL_RECEIVER_EMAIL || "";
@@ -53,6 +56,8 @@ const mimeTypes = {
   ".svg": "image/svg+xml"
 };
 
+const providerIds = ["openai", "gemini", "claude", "openrouter", "ainextcode"];
+
 const defaultPlans = [
   {
     id: "free",
@@ -60,7 +65,7 @@ const defaultPlans = [
     price: 0,
     currency: "USD",
     interval: "month",
-    providerAccess: ["openai", "gemini", "claude", "openrouter"],
+    providerAccess: providerIds,
     messageLimit: 1000000,
     features: ["Free multi-model chat", "OpenRouter free model presets", "Plugins and themes"],
     active: true
@@ -204,7 +209,8 @@ function publicUser(user) {
     openai: Boolean(apiKeys?.openai),
     gemini: Boolean(apiKeys?.gemini),
     claude: Boolean(apiKeys?.claude),
-    openrouter: Boolean(apiKeys?.openrouter)
+    openrouter: Boolean(apiKeys?.openrouter),
+    ainextcode: Boolean(apiKeys?.ainextcode)
   };
   safeUser.modelPrefs ||= {};
   return safeUser;
@@ -344,6 +350,13 @@ function providersStatus(user = null) {
       defaultModel: modelPrefs.openrouter || "deepseek/deepseek-r1-0528:free",
       configured: Boolean(apiKeys.openrouter || OPENROUTER_API_KEY),
       source: apiKeys.openrouter ? "user" : OPENROUTER_API_KEY ? "server" : "missing"
+    },
+    {
+      id: "ainextcode",
+      name: "AInextcode API",
+      defaultModel: modelPrefs.ainextcode || AINEXTCODE_MODEL,
+      configured: Boolean(apiKeys.ainextcode || AINEXTCODE_API_KEY),
+      source: apiKeys.ainextcode ? "user" : AINEXTCODE_API_KEY ? "server" : "missing"
     }
   ];
 }
@@ -357,6 +370,7 @@ function providerModel(provider, model, user = null) {
   const modelPrefs = user?.modelPrefs || {};
   if (modelPrefs[provider]) return modelPrefs[provider];
   if (provider === "openrouter") return "deepseek/deepseek-r1-0528:free";
+  if (provider === "ainextcode") return AINEXTCODE_MODEL;
   if (provider === "gemini") return GEMINI_MODEL;
   if (provider === "claude") return CLAUDE_MODEL;
   return OPENAI_MODEL;
@@ -486,6 +500,33 @@ async function callOpenRouter({ apiKey, model, instructions, messages }) {
   return chatCompletionText(data);
 }
 
+async function callAInextcode({ apiKey, model, instructions, messages }) {
+  if (!apiKey) throw new Error("AInextcode API is not configured. Add an AInextcode API key in API Settings.");
+
+  const apiResponse = await fetch(`${AINEXTCODE_API_BASE_URL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "X-Title": "AInextcode Bots and Agents"
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: instructions },
+        ...messages.map(message => ({
+          role: message.role,
+          content: message.content
+        }))
+      ]
+    })
+  });
+
+  const data = await apiResponse.json().catch(() => ({}));
+  if (!apiResponse.ok) throw new Error(data.error?.message || data.message || "AInextcode API request failed.");
+  return chatCompletionText(data) || String(data.message || data.output || data.response || "").trim();
+}
+
 async function handleChat(req, res) {
   const context = requireUser(req, res);
   if (!context) return;
@@ -503,7 +544,7 @@ async function handleChat(req, res) {
       return;
     }
 
-    const provider = ["openai", "gemini", "claude", "openrouter"].includes(body.provider) ? body.provider : "openai";
+    const provider = providerIds.includes(body.provider) ? body.provider : "openai";
     if (!plan.providerAccess.includes(provider)) {
       sendJson(res, 403, { error: `${plan.name} does not include ${provider}. Upgrade your plan to use it.` });
       return;
@@ -532,7 +573,9 @@ async function handleChat(req, res) {
         ? userApiKeys.claude || ANTHROPIC_API_KEY
         : provider === "openrouter"
           ? userApiKeys.openrouter || OPENROUTER_API_KEY
-          : userApiKeys.openai || OPENAI_API_KEY;
+          : provider === "ainextcode"
+            ? userApiKeys.ainextcode || AINEXTCODE_API_KEY
+            : userApiKeys.openai || OPENAI_API_KEY;
     const payload = { apiKey, model, instructions, messages };
 
     let message;
@@ -542,6 +585,8 @@ async function handleChat(req, res) {
       message = await callClaude(payload);
     } else if (provider === "openrouter") {
       message = await callOpenRouter(payload);
+    } else if (provider === "ainextcode") {
+      message = await callAInextcode(payload);
     } else {
       message = await callOpenAI(payload);
     }
@@ -683,7 +728,8 @@ async function handleApiSettings(req, res) {
       openai: "openaiKey",
       gemini: "geminiKey",
       claude: "claudeKey",
-      openrouter: "openrouterKey"
+      openrouter: "openrouterKey",
+      ainextcode: "ainextcodeKey"
     };
 
     for (const [provider, field] of Object.entries(keyFields)) {
@@ -697,7 +743,7 @@ async function handleApiSettings(req, res) {
       }
     }
 
-    for (const provider of ["openai", "gemini", "claude", "openrouter"]) {
+    for (const provider of providerIds) {
       const model = String(body.models?.[provider] || "").trim();
       if (model) user.modelPrefs[provider] = model.slice(0, 120);
     }
@@ -935,7 +981,7 @@ async function handleAdminPlan(req, res) {
     currency: String(body.currency || "USD").toUpperCase().slice(0, 3),
     interval: String(body.interval || "month").slice(0, 20),
     messageLimit: Number(body.messageLimit || 100),
-    providerAccess: Array.isArray(body.providerAccess) ? body.providerAccess.filter(item => ["openai", "gemini", "claude", "openrouter"].includes(item)) : ["openai"],
+    providerAccess: Array.isArray(body.providerAccess) ? body.providerAccess.filter(item => providerIds.includes(item)) : ["openai"],
     features: String(body.features || "").split("\n").map(item => item.trim()).filter(Boolean),
     active: body.active !== false
   };

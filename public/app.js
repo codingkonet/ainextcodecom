@@ -4,6 +4,7 @@ const state = {
   config: { providers: [], plugins: [], themes: [] },
   messages: [],
   admin: null,
+  apiAccessKeys: [],
   authMode: "login",
   selectedTheme: localStorage.getItem("theme") || "sage"
 };
@@ -30,6 +31,9 @@ const authDialog = $("#authDialog");
 const authForm = $("#authForm");
 const authMessage = $("#authMessage");
 const apiSettingsForm = $("#apiSettingsForm");
+const apiAccessKeyForm = $("#apiAccessKeyForm");
+const apiAccessKeyList = $("#apiAccessKeyList");
+const generatedApiKey = $("#generatedApiKey");
 const toast = $("#toast");
 const providerIds = ["openai", "gemini", "claude", "openrouter", "ainextcode"];
 
@@ -40,6 +44,15 @@ function showToast(message) {
   showToast.timer = window.setTimeout(() => {
     toast.hidden = true;
   }, 3600);
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 async function api(path, options = {}) {
@@ -161,6 +174,31 @@ function renderApiSettings() {
   apiSettingsForm.elements.ainextcodeModel.value = prefs.ainextcode || "";
 }
 
+function renderApiAccessKeys() {
+  if (!apiAccessKeyList) return;
+
+  if (!state.user) {
+    apiAccessKeyList.innerHTML = "";
+    return;
+  }
+
+  apiAccessKeyList.innerHTML = state.apiAccessKeys.length
+    ? state.apiAccessKeys.map(item => `
+      <div class="item-row">
+        <div>
+          <strong>${escapeHtml(item.name)}</strong><br>
+          <span class="muted">${escapeHtml(item.prefix)} | Last used: ${escapeHtml(item.lastUsedAt || "Never")}</span>
+        </div>
+        <button class="danger-button" type="button" data-revoke-key="${item.id}">Revoke</button>
+      </div>
+    `).join("")
+    : `<p class="muted">No generated API keys yet.</p>`;
+
+  $$("[data-revoke-key]").forEach(button => {
+    button.addEventListener("click", () => revokeApiAccessKey(button.dataset.revokeKey));
+  });
+}
+
 function renderPlugins() {
   pluginList.innerHTML = "";
   for (const plugin of state.config.plugins) {
@@ -209,6 +247,7 @@ function renderWorkspace() {
   renderProviders();
   renderFreeModelPresets();
   renderApiSettings();
+  renderApiAccessKeys();
   renderPlugins();
   renderThemes();
   renderChat();
@@ -276,6 +315,12 @@ async function refreshMe() {
   state.user = data.user;
   state.plan = data.plan;
   state.config = data.config;
+  if (state.user) {
+    const keys = await api("/api/access-keys");
+    state.apiAccessKeys = keys.items || [];
+  } else {
+    state.apiAccessKeys = [];
+  }
 }
 
 async function loadAdmin() {
@@ -427,6 +472,40 @@ async function submitApiSettings(event) {
   }
 }
 
+async function generateApiAccessKey(event) {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(apiAccessKeyForm));
+
+  try {
+    const data = await api("/api/access-keys", {
+      method: "POST",
+      body: JSON.stringify({ name: values.name })
+    });
+    state.apiAccessKeys = [data.item, ...state.apiAccessKeys];
+    generatedApiKey.hidden = false;
+    generatedApiKey.innerHTML = `
+      <strong>Copy this key now. It will not be shown again.</strong>
+      <code>${escapeHtml(data.key)}</code>
+    `;
+    apiAccessKeyForm.reset();
+    renderApiAccessKeys();
+    showToast("API key generated.");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function revokeApiAccessKey(keyId) {
+  try {
+    await api(`/api/access-keys/${keyId}`, { method: "DELETE" });
+    state.apiAccessKeys = state.apiAccessKeys.filter(item => item.id !== keyId);
+    renderApiAccessKeys();
+    showToast("API key revoked.");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 form.addEventListener("submit", event => {
   event.preventDefault();
   const content = input.value.trim();
@@ -457,6 +536,7 @@ $("#logout").addEventListener("click", async () => {
   state.user = null;
   state.plan = null;
   state.messages = [];
+  state.apiAccessKeys = [];
   renderAll();
   location.hash = "#home";
 });
@@ -491,6 +571,7 @@ $("#themeForm").addEventListener("submit", event => submitCatalog(event, "/api/a
 if ($("#settingsForm")) $("#settingsForm").addEventListener("submit", event => submitCatalog(event, "/api/admin/settings"));
 $("#freeModelForm").addEventListener("submit", event => submitCatalog(event, "/api/admin/free-models"));
 apiSettingsForm.addEventListener("submit", submitApiSettings);
+apiAccessKeyForm.addEventListener("submit", generateApiAccessKey);
 
 window.addEventListener("hashchange", route);
 

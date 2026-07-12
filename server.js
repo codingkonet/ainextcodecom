@@ -143,6 +143,7 @@ function ensureDb() {
       settings: {
         paypalEmail: PAYPAL_RECEIVER_EMAIL
       },
+      apiAccessKeys: [],
       payments: []
     });
   }
@@ -155,6 +156,7 @@ function readDb() {
   data.themes ||= defaultThemes;
   data.settings ||= { paypalEmail: PAYPAL_RECEIVER_EMAIL };
   data.settings.paypalEmail ||= PAYPAL_RECEIVER_EMAIL;
+  data.apiAccessKeys ||= [];
   data.plans = [defaultPlans[0]];
   for (const theme of defaultThemes) {
     if (!data.themes.some(item => item.id === theme.id)) {
@@ -256,6 +258,25 @@ function newId(prefix) {
   return `${prefix}_${crypto.randomBytes(12).toString("hex")}`;
 }
 
+function hashApiKey(key) {
+  return crypto.createHash("sha256").update(String(key || "")).digest("hex");
+}
+
+function generateApiKey() {
+  return `axc_${crypto.randomBytes(32).toString("base64url")}`;
+}
+
+function publicApiAccessKey(item) {
+  return {
+    id: item.id,
+    name: item.name,
+    prefix: item.prefix,
+    active: item.active !== false,
+    createdAt: item.createdAt,
+    lastUsedAt: item.lastUsedAt || null
+  };
+}
+
 function getSession(req, db = readDb()) {
   const token = parseCookies(req).session;
   if (!token) return { db, user: null, session: null };
@@ -285,6 +306,23 @@ function requireAdmin(req, res) {
     return null;
   }
   return context;
+}
+
+function authenticateApiAccessKey(req) {
+  const authHeader = req.headers.authorization || "";
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) return null;
+
+  const db = readDb();
+  const keyHash = hashApiKey(match[1].trim());
+  const apiKey = db.apiAccessKeys.find(item => item.keyHash === keyHash && item.active !== false);
+  if (!apiKey) return null;
+
+  const user = db.users.find(item => item.id === apiKey.userId && item.status !== "disabled");
+  if (!user) return null;
+
+  apiKey.lastUsedAt = new Date().toISOString();
+  return { db, user, apiKey };
 }
 
 function currentUsageMonth() {
@@ -527,82 +565,99 @@ async function callAInextcode({ apiKey, model, instructions, messages }) {
   return chatCompletionText(data) || String(data.message || data.output || data.response || "").trim();
 }
 
+async function completeChatForUser({ db, user, body, defaultProvider = "openai" }) {
+  const plan = planForUser(db, user);
+  const messages = safeMessages(body.messages);
+  const lastUserMessage = [...messages].reverse().find(message => message.role === "user");
+
+  if (!lastUserMessage) {
+    const error = new Error("Send a user message first.");
+    error.status = 400;
+    throw error;
+  }
+
+  const provider = providerIds.includes(body.provider) ? body.provider : defaultProvider;
+  if (!plan.providerAccess.includes(provider)) {
+    const error = new Error(`${plan.name} does not include ${provider}.`);
+    error.status = 403;
+    throw error;
+  }
+
+  const month = currentUsageMonth();
+  user.usage ||= {};
+  user.usage[month] ||= 0;
+
+  if (plan.messageLimit > 0 && user.usage[month] >= plan.messageLimit) {
+    const error = new Error("This plan has reached its monthly message limit.");
+    error.status = 402;
+    throw error;
+  }
+
+  const enabledPluginIds = Array.isArray(body.plugins) ? body.plugins.map(String) : [];
+  const instructions = buildInstructions({
+    specialization: body.specialization,
+    plugins: db.plugins,
+    enabledPluginIds
+  });
+  const model = providerModel(provider, body.model, user);
+  const userApiKeys = user.apiKeys || {};
+  const apiKey = provider === "gemini"
+    ? userApiKeys.gemini || GEMINI_API_KEY
+    : provider === "claude"
+      ? userApiKeys.claude || ANTHROPIC_API_KEY
+      : provider === "openrouter"
+        ? userApiKeys.openrouter || OPENROUTER_API_KEY
+        : provider === "ainextcode"
+          ? userApiKeys.ainextcode || AINEXTCODE_API_KEY
+          : userApiKeys.openai || OPENAI_API_KEY;
+  const payload = { apiKey, model, instructions, messages };
+
+  let message;
+  if (provider === "gemini") {
+    message = await callGemini(payload);
+  } else if (provider === "claude") {
+    message = await callClaude(payload);
+  } else if (provider === "openrouter") {
+    message = await callOpenRouter(payload);
+  } else if (provider === "ainextcode") {
+    message = await callAInextcode(payload);
+  } else {
+    message = await callOpenAI(payload);
+  }
+
+  user.usage[month] += 1;
+
+  return {
+    message: message || "I received the request, but no text response was returned.",
+    provider,
+    model,
+    usage: user.usage[month],
+    limit: plan.messageLimit
+  };
+}
+
 async function handleChat(req, res) {
   const context = requireUser(req, res);
   if (!context) return;
 
   try {
     const body = await jsonBody(req);
-    const db = context.db;
-    const user = context.user;
-    const plan = planForUser(db, user);
-    const messages = safeMessages(body.messages);
-    const lastUserMessage = [...messages].reverse().find(message => message.role === "user");
-
-    if (!lastUserMessage) {
-      sendJson(res, 400, { error: "Send a user message first." });
-      return;
-    }
-
-    const provider = providerIds.includes(body.provider) ? body.provider : "openai";
-    if (!plan.providerAccess.includes(provider)) {
-      sendJson(res, 403, { error: `${plan.name} does not include ${provider}. Upgrade your plan to use it.` });
-      return;
-    }
-
-    const month = currentUsageMonth();
-    user.usage ||= {};
-    user.usage[month] ||= 0;
-
-    if (plan.messageLimit > 0 && user.usage[month] >= plan.messageLimit) {
-      sendJson(res, 402, { error: "This plan has reached its monthly message limit." });
-      return;
-    }
-
-    const enabledPluginIds = Array.isArray(body.plugins) ? body.plugins.map(String) : [];
-    const instructions = buildInstructions({
-      specialization: body.specialization,
-      plugins: db.plugins,
-      enabledPluginIds
+    const result = await completeChatForUser({
+      db: context.db,
+      user: context.user,
+      body,
+      defaultProvider: "openai"
     });
-    const model = providerModel(provider, body.model, user);
-    const userApiKeys = user.apiKeys || {};
-    const apiKey = provider === "gemini"
-      ? userApiKeys.gemini || GEMINI_API_KEY
-      : provider === "claude"
-        ? userApiKeys.claude || ANTHROPIC_API_KEY
-        : provider === "openrouter"
-          ? userApiKeys.openrouter || OPENROUTER_API_KEY
-          : provider === "ainextcode"
-            ? userApiKeys.ainextcode || AINEXTCODE_API_KEY
-            : userApiKeys.openai || OPENAI_API_KEY;
-    const payload = { apiKey, model, instructions, messages };
-
-    let message;
-    if (provider === "gemini") {
-      message = await callGemini(payload);
-    } else if (provider === "claude") {
-      message = await callClaude(payload);
-    } else if (provider === "openrouter") {
-      message = await callOpenRouter(payload);
-    } else if (provider === "ainextcode") {
-      message = await callAInextcode(payload);
-    } else {
-      message = await callOpenAI(payload);
-    }
-
-    user.usage[month] += 1;
-    writeDb(db);
-
+    writeDb(context.db);
     sendJson(res, 200, {
-      message: message || "I received the request, but no text response was returned.",
-      provider,
-      model,
-      usage: user.usage[month],
-      limit: plan.messageLimit
+      message: result.message,
+      provider: result.provider,
+      model: result.model,
+      usage: result.usage,
+      limit: result.limit
     });
   } catch (error) {
-    sendJson(res, 500, { error: error.message || "Something went wrong." });
+    sendJson(res, error.status || 500, { error: error.message || "Something went wrong." });
   }
 }
 
@@ -755,6 +810,103 @@ async function handleApiSettings(req, res) {
     });
   } catch (error) {
     sendJson(res, 500, { error: error.message || "Could not save API settings." });
+  }
+}
+
+async function handleListApiAccessKeys(req, res) {
+  const context = requireUser(req, res);
+  if (!context) return;
+
+  const items = (context.db.apiAccessKeys || [])
+    .filter(item => item.userId === context.user.id)
+    .map(publicApiAccessKey);
+  sendJson(res, 200, { items });
+}
+
+async function handleCreateApiAccessKey(req, res) {
+  const context = requireUser(req, res);
+  if (!context) return;
+
+  try {
+    const body = await jsonBody(req);
+    const key = generateApiKey();
+    const item = {
+      id: newId("key"),
+      userId: context.user.id,
+      name: String(body.name || "AInextcode API key").trim().slice(0, 80),
+      prefix: `${key.slice(0, 8)}...${key.slice(-4)}`,
+      keyHash: hashApiKey(key),
+      active: true,
+      createdAt: new Date().toISOString(),
+      lastUsedAt: null
+    };
+
+    context.db.apiAccessKeys ||= [];
+    context.db.apiAccessKeys.push(item);
+    writeDb(context.db);
+    sendJson(res, 201, { key, item: publicApiAccessKey(item) });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Could not create API key." });
+  }
+}
+
+function handleDeleteApiAccessKey(req, res, keyId) {
+  const context = requireUser(req, res);
+  if (!context) return;
+
+  const item = (context.db.apiAccessKeys || []).find(key => key.id === keyId && key.userId === context.user.id);
+  if (!item) {
+    sendJson(res, 404, { error: "API key not found." });
+    return;
+  }
+
+  item.active = false;
+  item.revokedAt = new Date().toISOString();
+  writeDb(context.db);
+  sendJson(res, 200, { ok: true });
+}
+
+async function handleOpenAICompatibleChat(req, res) {
+  const context = authenticateApiAccessKey(req);
+  if (!context) {
+    sendJson(res, 401, { error: { message: "Invalid or missing AInextcode API key." } });
+    return;
+  }
+
+  try {
+    const body = await jsonBody(req);
+    const result = await completeChatForUser({
+      db: context.db,
+      user: context.user,
+      body,
+      defaultProvider: "ainextcode"
+    });
+    writeDb(context.db);
+    sendJson(res, 200, {
+      id: newId("chatcmpl"),
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model: result.model,
+      provider: result.provider,
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: result.message
+        },
+        finish_reason: "stop"
+      }],
+      usage: {
+        total_messages: result.usage,
+        message_limit: result.limit
+      }
+    });
+  } catch (error) {
+    sendJson(res, error.status || 500, {
+      error: {
+        message: error.message || "AInextcode API request failed."
+      }
+    });
   }
 }
 
@@ -1075,6 +1227,8 @@ function route(req, res) {
     return;
   }
 
+  if (req.method === "POST" && pathname === "/v1/chat/completions") return handleOpenAICompatibleChat(req, res);
+
   if (req.method === "GET" && pathname === "/api/me") {
     const context = getSession(req);
     sendJson(res, 200, {
@@ -1089,6 +1243,8 @@ function route(req, res) {
   if (req.method === "POST" && pathname === "/api/auth/login") return handleLogin(req, res);
   if (req.method === "POST" && pathname === "/api/auth/logout") return handleLogout(req, res);
   if (req.method === "POST" && pathname === "/api/settings/api") return handleApiSettings(req, res);
+  if (req.method === "GET" && pathname === "/api/access-keys") return handleListApiAccessKeys(req, res);
+  if (req.method === "POST" && pathname === "/api/access-keys") return handleCreateApiAccessKey(req, res);
   if (req.method === "POST" && pathname === "/api/chat") return handleChat(req, res);
   if (req.method === "POST" && pathname === "/api/paypal/create-order") return handleCreatePayPalOrder(req, res);
   if (req.method === "POST" && pathname === "/api/paypal/capture-order") return handleCapturePayPalOrder(req, res);
@@ -1111,6 +1267,8 @@ function route(req, res) {
   }
 
   const userMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
+  const accessKeyMatch = pathname.match(/^\/api\/access-keys\/([^/]+)$/);
+  if (req.method === "DELETE" && accessKeyMatch) return handleDeleteApiAccessKey(req, res, accessKeyMatch[1]);
   if (req.method === "PUT" && userMatch) return handleAdminUpdateUser(req, res, userMatch[1]);
   if (req.method === "POST" && pathname === "/api/admin/plans") return handleAdminPlan(req, res);
   if (req.method === "POST" && pathname === "/api/admin/plugins") return handleAdminCatalogItem(req, res, "plugins");

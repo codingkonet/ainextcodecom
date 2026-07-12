@@ -681,6 +681,36 @@ th {
   margin: 12px 0 0;
 }
 
+.api-output,
+.api-code {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.api-output code,
+.api-code code {
+  display: block;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.danger-button {
+  min-height: 36px;
+  background: var(--danger);
+}
+
+.danger-button:hover {
+  background: #991b1b;
+}
+
 .item-list {
   display: grid;
   gap: 10px;

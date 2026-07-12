@@ -114,6 +114,20 @@
             </form>
           </details>
 
+          <details class="api-settings">
+            <summary>AInextcode API Keys</summary>
+            <form id="apiAccessKeyForm" class="stack-form">
+              <input name="name" placeholder="Key name, e.g. Website bot">
+              <button type="submit">Generate API key</button>
+            </form>
+            <div id="generatedApiKey" class="api-output" hidden></div>
+            <div class="api-code">
+              <strong>Endpoint</strong>
+              <code>/v1/chat/completions</code>
+            </div>
+            <div id="apiAccessKeyList" class="item-list"></div>
+          </details>
+
           <label>
             Specialization
             <select id="specialization">

@@ -71,6 +71,50 @@ npm.cmd run terminal -- --provider openai --model gpt-5.1
 
 Inside the terminal chat, use `/help` to see commands like `/provider`, `/model`, `/specialization`, `/clear`, and `/exit`.
 
+## AInextcode API Generator
+
+Users can generate API keys from the workspace and use AInextcode as an OpenAI-compatible API for bots, agents, tools, and other AI apps.
+
+1. Log in to AInextcode.
+2. Open **Workspace**.
+3. Open **AInextcode API Keys**.
+4. Generate a key and copy it once.
+5. Call:
+
+```text
+POST https://your-domain.com/v1/chat/completions
+Authorization: Bearer axc_your_generated_key
+Content-Type: application/json
+```
+
+Example body:
+
+```json
+{
+  "provider": "ainextcode",
+  "model": "ainextcode-agent",
+  "messages": [
+    { "role": "user", "content": "Create a customer support bot for my website." }
+  ],
+  "specialization": "bot and agent creation"
+}
+```
+
+The response uses the familiar chat-completion shape:
+
+```json
+{
+  "choices": [
+    {
+      "message": {
+        "role": "assistant",
+        "content": "..."
+      }
+    }
+  ]
+}
+```
+
 ## Android App
 
 The `android-app` folder contains a native Android terminal-style app linked to:

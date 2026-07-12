@@ -23,22 +23,26 @@ const DEFAULTS = {
   openai: process.env.OPENAI_MODEL || "gpt-5.1",
   gemini: process.env.GEMINI_MODEL || "gemini-2.0-flash",
   claude: process.env.CLAUDE_MODEL || "claude-sonnet-4-5",
-  openrouter: process.env.OPENROUTER_MODEL || "deepseek/deepseek-r1-0528:free"
+  openrouter: process.env.OPENROUTER_MODEL || "deepseek/deepseek-r1-0528:free",
+  ainextcode: process.env.AINEXTCODE_MODEL || "ainextcode-agent"
 };
 
 const KEYS = {
   openai: process.env.OPENAI_API_KEY,
   gemini: process.env.GEMINI_API_KEY,
   claude: process.env.ANTHROPIC_API_KEY,
-  openrouter: process.env.OPENROUTER_API_KEY
+  openrouter: process.env.OPENROUTER_API_KEY,
+  ainextcode: process.env.AINEXTCODE_API_KEY
 };
 
 const PROVIDERS = {
   openai: "OpenAI",
   gemini: "Gemini",
   claude: "Claude",
-  openrouter: "OpenRouter Free"
+  openrouter: "OpenRouter Free",
+  ainextcode: "AInextcode API"
 };
+const AINEXTCODE_API_BASE_URL = (process.env.AINEXTCODE_API_BASE_URL || "https://ai.ainextcode.com/v1").replace(/\/+$/, "");
 
 const BASE_INSTRUCTIONS = `You are AInextcode, an AI assistant powered by a multi-model platform.
 
@@ -221,6 +225,18 @@ async function callOpenRouter({ apiKey, model, instructions, messages }) {
   return chatCompletionText(data);
 }
 
+async function callAInextcode({ apiKey, model, instructions, messages }) {
+  if (!apiKey) throw new Error("AInextcode API key missing. Set AINEXTCODE_API_KEY.");
+  const response = await fetch(`${AINEXTCODE_API_BASE_URL}/chat/completions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "X-Title": "AInextcode Terminal" },
+    body: JSON.stringify({ model, messages: [{ role: "system", content: instructions }, ...messages] })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error?.message || data.message || "AInextcode API request failed.");
+  return chatCompletionText(data) || String(data.message || data.output || data.response || "").trim();
+}
+
 async function callGemini({ apiKey, model, instructions, messages }) {
   if (!apiKey) throw new Error("Gemini key missing. Set GEMINI_API_KEY.");
   const contents = messages.map(message => ({
@@ -263,6 +279,7 @@ async function askLocalProvider(state) {
   if (state.provider === "gemini") return callGemini(payload);
   if (state.provider === "claude") return callClaude(payload);
   if (state.provider === "openrouter") return callOpenRouter(payload);
+  if (state.provider === "ainextcode") return callAInextcode(payload);
   return callOpenAI(payload);
 }
 
@@ -291,7 +308,7 @@ function printHelp() {
 Commands:
   /help                         Show commands
   /status                       Show provider, model, server, and key/account status
-  /provider <name>              Use openai, gemini, claude, or openrouter
+  /provider <name>              Use openai, gemini, claude, openrouter, or ainextcode
   /model <model-name>           Change the current model
   /specialization <text>        Change the assistant specialization
   /login                        Log in again to the remote AInextcode server
@@ -320,7 +337,7 @@ function printStatus(state) {
 
 function setProvider(state, provider) {
   if (!PROVIDERS[provider]) {
-    console.log("Unknown provider. Use openai, gemini, claude, or openrouter.");
+    console.log("Unknown provider. Use openai, gemini, claude, openrouter, or ainextcode.");
     return;
   }
   state.provider = provider;

@@ -15,6 +15,10 @@ services:
         value: gemini-2.0-flash
       - key: CLAUDE_MODEL
         value: claude-sonnet-4-5
+      - key: AINEXTCODE_MODEL
+        value: ainextcode-agent
+      - key: AINEXTCODE_API_BASE_URL
+        value: https://ai.ainextcode.com/v1
       - key: OPENAI_API_KEY
         sync: false
       - key: GEMINI_API_KEY
@@ -22,4 +26,6 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: OPENROUTER_API_KEY
+        sync: false
+      - key: AINEXTCODE_API_KEY
         sync: false

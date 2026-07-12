@@ -33,7 +33,7 @@
           <div class="hero-copy">
             <p class="eyebrow">Free AI workspace</p>
             <h1>AInextcode is free for everyone.</h1>
-            <p class="hero-text">Chat with OpenAI, Gemini, Claude, and free OpenRouter models from one clean workspace. Bring your own API keys, switch models anytime, and use plugins and themes without paid plans.</p>
+            <p class="hero-text">Chat with OpenAI, Gemini, Claude, OpenRouter, and AInextcode API models from one clean workspace. Bring your own API keys, switch models anytime, and create bot and agent workflows without paid plans.</p>
             <div class="hero-actions">
               <button id="heroSignup" type="button">Start free</button>
               <a class="text-link" href="#app">Open workspace</a>
@@ -51,6 +51,7 @@
               <div><strong>Gemini</strong><span data-provider-status="gemini">Checking</span></div>
               <div><strong>Claude</strong><span data-provider-status="claude">Checking</span></div>
               <div><strong>OpenRouter</strong><span data-provider-status="openrouter">Checking</span></div>
+              <div><strong>AInextcode</strong><span data-provider-status="ainextcode">Checking</span></div>
             </div>
           </div>
         </div>
@@ -58,7 +59,7 @@
         <div class="feature-grid">
           <article>
             <h2>All providers free</h2>
-            <p>Use OpenAI, Gemini, Claude, and OpenRouter access from the same workspace.</p>
+            <p>Use OpenAI, Gemini, Claude, OpenRouter, and AInextcode API access from the same workspace.</p>
           </article>
           <article>
             <h2>No paid plans</h2>
@@ -106,6 +107,9 @@
               <input name="openrouterKey" placeholder="OpenRouter API key">
               <input name="openrouterModel" placeholder="OpenRouter free model slug">
               <label class="inline-check"><input name="clearOpenrouter" type="checkbox"> Clear OpenRouter key</label>
+              <input name="ainextcodeKey" placeholder="AInextcode API key">
+              <input name="ainextcodeModel" placeholder="AInextcode bot or agent model">
+              <label class="inline-check"><input name="clearAinextcode" type="checkbox"> Clear AInextcode key</label>
               <button type="submit">Save API settings</button>
             </form>
           </details>

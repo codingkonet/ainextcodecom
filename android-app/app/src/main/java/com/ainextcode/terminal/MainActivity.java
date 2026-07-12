@@ -33,7 +33,7 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final String DEFAULT_SERVER = "https://ainextcodecom.onrender.com";
-    private static final String[] PROVIDERS = {"openai", "gemini", "claude", "openrouter"};
+    private static final String[] PROVIDERS = {"openai", "gemini", "claude", "openrouter", "ainextcode"};
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -211,7 +211,7 @@ public class MainActivity extends Activity {
         String value = parts.length > 1 ? parts[1].trim() : "";
 
         if ("help".equals(command)) {
-            append("Commands: /help, /status, /provider openai|gemini|claude|openrouter, /model name, /clear");
+            append("Commands: /help, /status, /provider openai|gemini|claude|openrouter|ainextcode, /model name, /clear");
         } else if ("status".equals(command)) {
             appendStatus();
         } else if ("provider".equals(command)) {

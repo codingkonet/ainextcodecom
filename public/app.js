@@ -31,6 +31,7 @@ const authForm = $("#authForm");
 const authMessage = $("#authMessage");
 const apiSettingsForm = $("#apiSettingsForm");
 const toast = $("#toast");
+const providerIds = ["openai", "gemini", "claude", "openrouter", "ainextcode"];
 
 function showToast(message) {
   toast.textContent = message;
@@ -119,7 +120,7 @@ function renderFreeModelPresets() {
 function renderProviders() {
   const previousProvider = providerSelect.value;
   providerSelect.innerHTML = "";
-  const allowed = state.plan?.providerAccess || ["openai", "gemini", "claude", "openrouter"];
+  const allowed = state.plan?.providerAccess || providerIds;
 
   for (const provider of state.config.providers) {
     const option = document.createElement("option");
@@ -148,7 +149,8 @@ function renderApiSettings() {
     `OpenAI: ${status.openai ? "saved" : "not saved"}`,
     `Gemini: ${status.gemini ? "saved" : "not saved"}`,
     `Claude: ${status.claude ? "saved" : "not saved"}`,
-    `OpenRouter: ${status.openrouter ? "saved" : "not saved"}`
+    `OpenRouter: ${status.openrouter ? "saved" : "not saved"}`,
+    `AInextcode: ${status.ainextcode ? "saved" : "not saved"}`
   ].join(" | ");
 
   const prefs = state.user.modelPrefs || {};
@@ -156,6 +158,7 @@ function renderApiSettings() {
   apiSettingsForm.elements.geminiModel.value = prefs.gemini || "";
   apiSettingsForm.elements.claudeModel.value = prefs.claude || "";
   apiSettingsForm.elements.openrouterModel.value = prefs.openrouter || "";
+  apiSettingsForm.elements.ainextcodeModel.value = prefs.ainextcode || "";
 }
 
 function renderPlugins() {
@@ -387,17 +390,20 @@ async function submitApiSettings(event) {
         geminiKey: values.geminiKey,
         claudeKey: values.claudeKey,
         openrouterKey: values.openrouterKey,
+        ainextcodeKey: values.ainextcodeKey,
         models: {
           openai: values.openaiModel,
           gemini: values.geminiModel,
           claude: values.claudeModel,
-          openrouter: values.openrouterModel
+          openrouter: values.openrouterModel,
+          ainextcode: values.ainextcodeModel
         },
         clear: {
           openai: values.clearOpenai === "on",
           gemini: values.clearGemini === "on",
           claude: values.clearClaude === "on",
-          openrouter: values.clearOpenrouter === "on"
+          openrouter: values.clearOpenrouter === "on",
+          ainextcode: values.clearAinextcode === "on"
         }
       })
     });
@@ -408,10 +414,12 @@ async function submitApiSettings(event) {
     apiSettingsForm.elements.geminiKey.value = "";
     apiSettingsForm.elements.claudeKey.value = "";
     apiSettingsForm.elements.openrouterKey.value = "";
+    apiSettingsForm.elements.ainextcodeKey.value = "";
     apiSettingsForm.elements.clearOpenai.checked = false;
     apiSettingsForm.elements.clearGemini.checked = false;
     apiSettingsForm.elements.clearClaude.checked = false;
     apiSettingsForm.elements.clearOpenrouter.checked = false;
+    apiSettingsForm.elements.clearAinextcode.checked = false;
     renderAll();
     showToast("API settings saved.");
   } catch (error) {
